@@ -1616,39 +1616,39 @@ class GameState {
         const div = document.createElement('div');
         div.className = 'build-item' + (p.money < cost ? ' disabled' : '');
 
-        // Render 3D icon
-        const iconCanvas = this.renderer3d.renderBuildIcon(type, p.color, 48);
+        // Render 3D icon — larger for card layout
+        const iconSize = 80;
+        const iconCanvas = this.renderer3d.renderBuildIcon(type, p.color, iconSize);
         const iconImg = document.createElement('canvas');
-        iconImg.width = 48;
-        iconImg.height = 48;
+        iconImg.width = iconSize;
+        iconImg.height = iconSize;
         const ictx = iconImg.getContext('2d');
-        // Dark background
         ictx.fillStyle = '#1a1a2e';
-        ictx.fillRect(0, 0, 48, 48);
-        ictx.drawImage(iconCanvas, 0, 0, 48, 48);
-        // Border
-        ictx.strokeStyle = p.color;
-        ictx.lineWidth = 1;
-        ictx.strokeRect(0, 0, 48, 48);
-
+        ictx.fillRect(0, 0, iconSize, iconSize);
+        ictx.drawImage(iconCanvas, 0, 0, iconSize, iconSize);
         div.appendChild(iconImg);
 
-        // Queue badge for units
-        let queueBadge = null;
+        // Cost badge (top-right)
+        const costEl = document.createElement('div');
+        costEl.className = 'item-cost';
+        costEl.textContent = `$${cost}`;
+        div.appendChild(costEl);
+
+        // Name label (bottom)
+        const labelEl = document.createElement('div');
+        labelEl.className = 'item-label';
+        labelEl.textContent = name;
+        div.appendChild(labelEl);
+
+        // Queue badge for units (top-left)
         if (isUnit) {
             const totalQueued = this._getTotalTrainQueue(p);
-            const infoHtml = `<div><div>${name}</div><div style="font-size:9px;color:#888">${desc}</div></div>`;
-            const badgeHtml = `<div class="queue-badge" style="background:#e94560;color:#fff;font-size:10px;font-weight:bold;padding:1px 6px;border-radius:8px;margin-left:4px;min-width:20px;text-align:center;display:${totalQueued > 0 ? 'inline-block' : 'none'}">${totalQueued}</div>`;
-            const costHtml = `<div class="cost">$${cost}</div>`;
-            div.innerHTML += infoHtml + badgeHtml + costHtml;
-            queueBadge = div.querySelector('.queue-badge');
-        } else {
-            div.innerHTML += `<div><div>${name}</div><div style="font-size:9px;color:#888">${desc}</div></div><div class="cost">$${cost}</div>`;
-        }
-
-        // Store reference for live updates
-        if (isUnit && queueBadge) {
-            this._soldierQueueBadge = queueBadge;
+            const badge = document.createElement('div');
+            badge.className = 'queue-badge';
+            badge.textContent = totalQueued;
+            badge.style.display = totalQueued > 0 ? 'block' : 'none';
+            div.appendChild(badge);
+            this._soldierQueueBadge = badge;
         }
 
         div.addEventListener('click', () => {
