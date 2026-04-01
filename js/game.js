@@ -386,6 +386,9 @@ class GameState {
 
         el.addEventListener('touchend', e => {
             e.preventDefault();
+
+            // Save longpress state BEFORE cancelling
+            const wasLongPress = touch.gesture === 'longpress' && touch.longPressReady;
             cancelLongPress();
 
             if (e.touches.length > 0) {
@@ -396,8 +399,9 @@ class GameState {
             const t = e.changedTouches[0];
             const now = Date.now();
 
-            if (touch.gesture === 'longpress' && touch.longPressReady) {
-                // Long press = right-click action
+            if (wasLongPress) {
+                // Long press = right-click action (move/attack)
+                console.log('[Touch] Long press triggered at', t.clientX, t.clientY, 'selected:', this.selected.length);
                 this.onRightClick({ clientX: t.clientX, clientY: t.clientY });
 
             } else if (touch.gesture === 'drag' && this.isDragging && this.selBox) {
@@ -566,6 +570,7 @@ class GameState {
         }
 
         // Move command
+        let movedCount = 0;
         for (const u of this.selected) {
             if (u.type !== 'soldier') continue;
             u.target = { x: tile.x, y: tile.y };
@@ -573,7 +578,10 @@ class GameState {
             u.state = 'moving';
             u.path = this.findPath(Math.floor(u.x), Math.floor(u.y), tile.x, tile.y);
             u.pathIdx = 0;
+            movedCount++;
+            console.log('[Move] unit at', u.x.toFixed(1), u.y.toFixed(1), '→ tile', tile.x, tile.y, 'path length:', u.path?.length);
         }
+        console.log('[Move] Issued move to', movedCount, 'units → tile', tile.x, tile.y);
         this.commandPings.push({ tx: tile.x, ty: tile.y, color: '#00ff88', time: 0 });
     }
 
