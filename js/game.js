@@ -34,6 +34,7 @@ class GameState {
         this.minimapCanvas = document.getElementById('minimap');
         this.minimapCtx = this.minimapCanvas.getContext('2d');
 
+        this.sidebarCollapsed = false;
         this.width = window.innerWidth - 200;
         this.height = window.innerHeight - 36;
         this.resize();
@@ -103,16 +104,55 @@ class GameState {
         // Start
         this.setupInput();
         this.setupUI();
+        this.setupSidebarToggle();
         this.eva('Construction complete. Base established. Enemy detected!');
         requestAnimationFrame(t => this.loop(t));
     }
 
     resize() {
-        this.width = window.innerWidth - 200;
+        const sidebarWidth = this.sidebarCollapsed ? 0 : 200;
+        this.width = window.innerWidth - sidebarWidth;
         this.height = window.innerHeight - 36;
         this.overlayCanvas.width = window.innerWidth;
         this.overlayCanvas.height = window.innerHeight;
         if (this.renderer3d) this.renderer3d.resize();
+    }
+
+    setupSidebarToggle() {
+        const sidebar = document.getElementById('sidebar');
+        const toggleBtn = document.getElementById('sidebar-toggle');
+        this.sidebarCollapsed = window.innerWidth <= 768;
+
+        // Create floating minimap container
+        const floatingMinimap = document.createElement('div');
+        floatingMinimap.id = 'minimap-floating';
+        document.body.appendChild(floatingMinimap);
+
+        const updateSidebar = () => {
+            if (this.sidebarCollapsed) {
+                sidebar.classList.add('collapsed');
+                toggleBtn.classList.add('sidebar-collapsed');
+                toggleBtn.textContent = '☰';
+                // Move minimap canvas to floating container
+                floatingMinimap.style.display = 'block';
+                floatingMinimap.appendChild(this.minimapCanvas);
+            } else {
+                sidebar.classList.remove('collapsed');
+                toggleBtn.classList.remove('sidebar-collapsed');
+                toggleBtn.textContent = '✕';
+                // Move minimap canvas back to sidebar
+                floatingMinimap.style.display = 'none';
+                document.getElementById('minimap-container').appendChild(this.minimapCanvas);
+            }
+            this.resize();
+        };
+
+        toggleBtn.addEventListener('click', () => {
+            this.sidebarCollapsed = !this.sidebarCollapsed;
+            updateSidebar();
+        });
+
+        updateSidebar();
     }
 
     // ==================== MAP GENERATION ====================
@@ -229,67 +269,175 @@ class GameState {
             this.onRightClick(e);
         });
 
-        // Touch support
-        let lastTouch = null;
-        let touchDist = null;
-        this.renderer3d.domElement.addEventListener('touchstart', e => {
+        // Touch support - full gesture system
+        const touch = {
+            startPos: null,      // {x, y, time} for first finger
+            startPos2: null,     // second finger start
+            lastPos: null,       // last known position for panning
+            pinchDist: null,     // distance between two fingers
+            gesture: null,       // 'none' | 'tap' | 'drag' | 'longpress' | 'pan' | 'pinch'
+            longPressTimer: null,
+            longPressReady: false,
+            lastTapTime: 0,
+            moved: false,
+            LONG_PRESS_MS: 500,
+            DRAG_THRESHOLD: 10,
+        };
+
+        // Long-press visual indicator (expanding circle)
+        this._longPressIndicator = { active: false, x: 0, y: 0, startTime: 0 };
+
+        const cancelLongPress = () => {
+            if (touch.longPressTimer) { clearTimeout(touch.longPressTimer); touch.longPressTimer = null; }
+            touch.longPressReady = false;
+            this._longPressIndicator.active = false;
+        };
+
+        const el = this.renderer3d.domElement;
+
+        el.addEventListener('touchstart', e => {
             e.preventDefault();
+            const now = Date.now();
+
             if (e.touches.length === 1) {
                 const t = e.touches[0];
-                lastTouch = { x: t.clientX, y: t.clientY, time: Date.now() };
-                this.onMouseDown({ clientX: t.clientX, clientY: t.clientY, button: 0 });
+                touch.startPos = { x: t.clientX, y: t.clientY, time: now };
+                touch.lastPos = { x: t.clientX, y: t.clientY };
+                touch.moved = false;
+                touch.gesture = 'none';
+                touch.longPressReady = false;
+
+                // Start long-press timer
+                touch.longPressTimer = setTimeout(() => {
+                    if (!touch.moved && e.touches.length === 1) {
+                        touch.longPressReady = true;
+                        touch.gesture = 'longpress';
+                    }
+                }, touch.LONG_PRESS_MS);
+
+                // Start visual indicator
+                this._longPressIndicator = { active: true, x: t.clientX, y: t.clientY, startTime: now };
+
             } else if (e.touches.length === 2) {
+                cancelLongPress();
+                // Cancel any single-finger drag/select
+                this.selBox = null;
+                this.isDragging = false;
+                this.dragStart = null;
+
                 const t1 = e.touches[0], t2 = e.touches[1];
-                touchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                touch.pinchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                touch.lastPos = { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 };
+                touch.gesture = 'pinch';
             }
         }, { passive: false });
 
-        this.renderer3d.domElement.addEventListener('touchmove', e => {
+        el.addEventListener('touchmove', e => {
             e.preventDefault();
-            if (e.touches.length === 1) {
+            if (!touch.startPos && e.touches.length < 2) return;
+
+            if (e.touches.length === 1 && touch.gesture !== 'pinch') {
                 const t = e.touches[0];
-                this.onMouseMove({ clientX: t.clientX, clientY: t.clientY });
-            } else if (e.touches.length === 2 && touchDist) {
+                const dx = t.clientX - touch.startPos.x;
+                const dy = t.clientY - touch.startPos.y;
+                const dist = Math.hypot(dx, dy);
+
+                if (dist > touch.DRAG_THRESHOLD) {
+                    touch.moved = true;
+                    cancelLongPress();
+
+                    if (touch.gesture !== 'drag') touch.gesture = 'drag';
+
+                    // Box-select drag (single finger)
+                    this.dragStart = this.dragStart || { x: touch.startPos.x, y: touch.startPos.y };
+                    this.isDragging = true;
+                    this.selBox = {
+                        x1: Math.min(this.dragStart.x, t.clientX),
+                        y1: Math.min(this.dragStart.y, t.clientY),
+                        x2: Math.max(this.dragStart.x, t.clientX),
+                        y2: Math.max(this.dragStart.y, t.clientY)
+                    };
+                }
+
+            } else if (e.touches.length === 2) {
+                cancelLongPress();
                 const t1 = e.touches[0], t2 = e.touches[1];
                 const newDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-                // Pinch zoom
-                const delta = (touchDist - newDist) * 0.02;
-                this.renderer3d.zoom(delta);
-                // Pan
                 const midX = (t1.clientX + t2.clientX) / 2;
                 const midY = (t1.clientY + t2.clientY) / 2;
-                if (lastTouch) {
-                    this.camTileX -= (midX - lastTouch.x) * 0.05;
-                    this.camTileY -= (midY - lastTouch.y) * 0.05;
+
+                // Pinch zoom
+                if (touch.pinchDist) {
+                    const delta = (touch.pinchDist - newDist) * 0.02;
+                    this.renderer3d.zoom(delta);
                 }
-                lastTouch = { x: midX, y: midY };
-                touchDist = newDist;
+
+                // Two-finger pan
+                if (touch.lastPos) {
+                    this.camTileX -= (midX - touch.lastPos.x) * 0.05;
+                    this.camTileY -= (midY - touch.lastPos.y) * 0.05;
+                }
+
+                touch.lastPos = { x: midX, y: midY };
+                touch.pinchDist = newDist;
+                touch.gesture = 'pinch';
             }
         }, { passive: false });
 
-        this.renderer3d.domElement.addEventListener('touchend', e => {
+        el.addEventListener('touchend', e => {
             e.preventDefault();
-            if (e.changedTouches.length > 0) {
-                const t = e.changedTouches[0];
-                if (lastTouch && Date.now() - lastTouch.time < 300 && !this.isDragging) {
-                    this.onMouseUp({ clientX: t.clientX, clientY: t.clientY, button: 0 });
+            cancelLongPress();
+
+            if (e.touches.length > 0) {
+                // Still fingers down — wait for all to lift
+                return;
+            }
+
+            const t = e.changedTouches[0];
+            const now = Date.now();
+
+            if (touch.gesture === 'longpress' && touch.longPressReady) {
+                // Long press = right-click action
+                this.onRightClick({ clientX: t.clientX, clientY: t.clientY });
+
+            } else if (touch.gesture === 'drag' && this.isDragging && this.selBox) {
+                // Box select complete
+                this.onMouseUp({ clientX: t.clientX, clientY: t.clientY, button: 0 });
+
+            } else if (!touch.moved && touch.gesture !== 'pinch') {
+                // Tap — check for double-tap
+                if (now - touch.lastTapTime < 300) {
+                    // Double tap = attack command (right-click on enemy)
+                    this.onRightClick({ clientX: t.clientX, clientY: t.clientY });
+                    touch.lastTapTime = 0; // reset so triple tap doesn't re-trigger
                 } else {
-                    this.onMouseUp({ clientX: t.clientX, clientY: t.clientY, button: 0 });
+                    // Single tap = select
+                    const tile = this.renderer3d.screenToTile(t.clientX, t.clientY);
+                    this.clickSelect(tile.x, tile.y);
+                    touch.lastTapTime = now;
                 }
             }
+
+            // Reset state
             this.isDragging = false;
             this.selBox = null;
-            touchDist = null;
+            this.dragStart = null;
+            touch.startPos = null;
+            touch.pinchDist = null;
+            touch.gesture = null;
+            touch.moved = false;
+            touch.longPressReady = false;
         }, { passive: false });
 
-        let lastTap = 0;
-        this.renderer3d.domElement.addEventListener('touchend', e => {
-            const now = Date.now();
-            if (now - lastTap < 300) {
-                const t = e.changedTouches[0];
-                this.onRightClick({ clientX: t.clientX, clientY: t.clientY });
-            }
-            lastTap = now;
+        el.addEventListener('touchcancel', e => {
+            e.preventDefault();
+            cancelLongPress();
+            this.isDragging = false;
+            this.selBox = null;
+            this.dragStart = null;
+            touch.startPos = null;
+            touch.pinchDist = null;
+            touch.gesture = null;
         }, { passive: false });
     }
 
@@ -1041,6 +1189,26 @@ class GameState {
                 this.selBox.x2 - this.selBox.x1, this.selBox.y2 - this.selBox.y1
             );
             this.overlayCtx.setLineDash([]);
+        }
+
+        // Long-press indicator (expanding circle)
+        if (this._longPressIndicator && this._longPressIndicator.active) {
+            const lp = this._longPressIndicator;
+            const elapsed = Date.now() - lp.startTime;
+            const progress = Math.min(elapsed / 500, 1); // 500ms = LONG_PRESS_MS
+            const radius = 6 + progress * 24;
+            const ctx = this.overlayCtx;
+            ctx.beginPath();
+            ctx.arc(lp.x, lp.y, radius, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+            ctx.strokeStyle = progress >= 1 ? '#ff4444' : 'rgba(255,255,255,0.6)';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            if (progress >= 1) {
+                ctx.beginPath();
+                ctx.arc(lp.x, lp.y, radius, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255,68,68,0.15)';
+                ctx.fill();
+            }
         }
 
         // 2D health bars
