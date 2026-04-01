@@ -878,6 +878,22 @@ class GameState {
                             continue;
                         }
 
+                        // Retaliation: if being attacked by someone closer, switch to fight them
+                        if (u._lastHitTime && Date.now() - u._lastHitTime < 3000) {
+                            const nearbyAttacker = this._findNearestEnemy(u, u.owner);
+                            if (nearbyAttacker) {
+                                const attackerDist = Math.hypot(u.x - (nearbyAttacker.x !== undefined ? nearbyAttacker.x : nearbyAttacker.tx + 1),
+                                    u.y - (nearbyAttacker.y !== undefined ? nearbyAttacker.y : nearbyAttacker.ty + 1));
+                                // If attacker is closer than current target and in range, switch
+                                if (attackerDist <= u.range && attackerDist < dist) {
+                                    u.attackTarget = nearbyAttacker;
+                                    u.path = null;
+                                    u._lastHitTime = 0;
+                                    continue;
+                                }
+                            }
+                        }
+
                         // Move toward attack target using pathfinding
                         // Repath every 2s or if no path exists
                         u._repathTimer = (u._repathTimer || 0) + dt;
@@ -1127,9 +1143,11 @@ class GameState {
                         if (eu.state === 'dead' || eu.hp <= 0) continue;
                         const sd = Math.hypot(eu.x - hitX, eu.y - hitY);
                         if (sd <= splashRadius) {
-                            // Full damage to primary target, 50% to splash
                             const dmg = (eu === p.target) ? p.damage : Math.floor(p.damage * 0.5);
                             eu.hp -= dmg;
+                            // Record who attacked this unit (for retaliation)
+                            eu._lastAttackerOwner = p.owner;
+                            eu._lastHitTime = Date.now();
                             if (eu.hp <= 0) eu.state = 'dead';
                         }
                     }
