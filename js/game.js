@@ -198,7 +198,7 @@ class GameState {
             built: true, buildProgress: 1,
             sight: def.sight, size: def.size,
             incomeTimer: 0,
-            training: null, trainProgress: 0
+            training: null, trainProgress: 0, trainQueue: 0
         };
     }
 
@@ -549,7 +549,7 @@ class GameState {
                 u.attackTarget = enemyUnit;
                 u.target = null;
                 u.state = 'attacking';
-                u.path = this.findPath(Math.floor(u.x), Math.floor(u.y), Math.floor(enemyUnit.x), Math.floor(enemyUnit.y));
+                u.path = this.findPath(Math.round(u.x), Math.round(u.y), Math.floor(enemyUnit.x), Math.floor(enemyUnit.y));
                 u.pathIdx = 0;
             }
             this.commandPings.push({ tx: tile.x, ty: tile.y, color: '#ff2200', time: 0 });
@@ -564,7 +564,7 @@ class GameState {
                 u.attackTarget = enemyBuilding;
                 u.target = null;
                 u.state = 'attacking';
-                u.path = this.findPath(Math.floor(u.x), Math.floor(u.y), enemyBuilding.tx + 1, enemyBuilding.ty + 1);
+                u.path = this.findPath(Math.round(u.x), Math.round(u.y), enemyBuilding.tx + 1, enemyBuilding.ty + 1);
                 u.pathIdx = 0;
             }
             this.commandPings.push({ tx: enemyBuilding.tx + 1, ty: enemyBuilding.ty + 1, color: '#ff2200', time: 0 });
@@ -577,13 +577,19 @@ class GameState {
             if (u.type !== 'soldier') continue;
             u.target = { x: tile.x, y: tile.y };
             u.attackTarget = null;
+            u._savedTarget = null;
+            u._savedPath = null;
             u.state = 'moving';
-            u.path = this.findPath(Math.floor(u.x), Math.floor(u.y), tile.x, tile.y);
-            u.pathIdx = 0;
+            const sx = Math.round(u.x), sy = Math.round(u.y);
+            u.path = this.findPath(sx, sy, tile.x, tile.y);
+            // Skip first waypoint if it's the start position (avoid walking backward)
+            if (u.path && u.path.length > 1 && Math.hypot(u.path[0].x - u.x, u.path[0].y - u.y) < 0.5) {
+                u.pathIdx = 1;
+            } else {
+                u.pathIdx = 0;
+            }
             movedCount++;
-            console.log('[Move] unit at', u.x.toFixed(1), u.y.toFixed(1), '→ tile', tile.x, tile.y, 'path length:', u.path?.length);
         }
-        console.log('[Move] Issued move to', movedCount, 'units → tile', tile.x, tile.y);
         this.commandPings.push({ tx: tile.x, ty: tile.y, color: '#00ff88', time: 0 });
     }
 
@@ -792,17 +798,26 @@ class GameState {
                     }
                 }
 
-                if (b.type === 'barracks' && b.built && b.training && b.hp > 0) {
-                    b.trainProgress += dt / BUILD_TYPES.barracks.trainTime;
-                    if (b.trainProgress >= 1) {
+                if (b.type === 'barracks' && b.built && b.hp > 0) {
+                    // Auto-start training from queue if idle
+                    if (!b.training && b.trainQueue > 0) {
+                        b.training = 'soldier';
                         b.trainProgress = 0;
-                        b.training = null;
-                        const spawnX = b.tx + b.size;
-                        const spawnY = b.ty + Math.floor(b.size / 2);
-                        p.units.push(this.createUnit('soldier', spawnX, spawnY, b.owner));
-                        if (b.owner === this.currentPlayer) {
-                            this.eva('Unit ready.');
-                            this.updateUI();
+                        b.trainQueue--;
+                    }
+                    // Progress current training
+                    if (b.training) {
+                        b.trainProgress += dt / BUILD_TYPES.barracks.trainTime;
+                        if (b.trainProgress >= 1) {
+                            b.trainProgress = 0;
+                            b.training = null;
+                            const spawnX = b.tx + b.size;
+                            const spawnY = b.ty + Math.floor(b.size / 2);
+                            p.units.push(this.createUnit('soldier', spawnX, spawnY, b.owner));
+                            if (b.owner === this.currentPlayer) {
+                                this.eva(`Unit ready.${b.trainQueue > 0 ? ` (${b.trainQueue} queued)` : ''}`);
+                                this.updateUI();
+                            }
                         }
                     }
                 }
@@ -857,7 +872,7 @@ class GameState {
                         // Repath every 2s or if no path exists
                         u._repathTimer = (u._repathTimer || 0) + dt;
                         if (!u.path || u.path.length === 0 || u.pathIdx >= u.path.length || u._repathTimer > 2000) {
-                            u.path = this.findPath(Math.floor(u.x), Math.floor(u.y), Math.floor(targetX), Math.floor(targetY));
+                            u.path = this.findPath(Math.round(u.x), Math.round(u.y), Math.floor(targetX), Math.floor(targetY));
                             u.pathIdx = 0;
                             u._repathTimer = 0;
                         }
@@ -998,8 +1013,9 @@ class GameState {
                             const sdx = u.x - other.x;
                             const sdy = u.y - other.y;
                             const sd = Math.hypot(sdx, sdy);
-                            if (sd < 0.3 && sd > 0.001) {
-                                const pushStrength = (0.3 - sd) * 0.05;
+                            if (sd < 0.6 && sd > 0.001) {
+                                // Stronger push at closer distances
+                                const pushStrength = (0.6 - sd) * 0.15;
                                 pushX += (sdx / sd) * pushStrength;
                                 pushY += (sdy / sd) * pushStrength;
                             }
@@ -1092,10 +1108,29 @@ class GameState {
             const spd = p.speed * dt / 1000;
 
             if (dist < 0.3) {
-                if (p.target && p.target.hp > 0) {
-                    p.target.hp -= p.damage;
-                    if (p.target.hp <= 0) {
-                        if (p.target.state !== undefined) p.target.state = 'dead';
+                // Splash damage: hit primary target + nearby enemies within 1.2 tiles
+                const splashRadius = 1.2;
+                const hitX = p.tx, hitY = p.ty;
+                for (let pi2 = 0; pi2 < this.players.length; pi2++) {
+                    if (pi2 === p.owner) continue; // don't splash friendlies
+                    for (const eu of this.players[pi2].units) {
+                        if (eu.state === 'dead' || eu.hp <= 0) continue;
+                        const sd = Math.hypot(eu.x - hitX, eu.y - hitY);
+                        if (sd <= splashRadius) {
+                            // Full damage to primary target, 50% to splash
+                            const dmg = (eu === p.target) ? p.damage : Math.floor(p.damage * 0.5);
+                            eu.hp -= dmg;
+                            if (eu.hp <= 0) eu.state = 'dead';
+                        }
+                    }
+                    for (const eb of this.players[pi2].buildings) {
+                        if (eb.hp <= 0) continue;
+                        const bx = eb.tx + 1, by = eb.ty + 1;
+                        const sd = Math.hypot(bx - hitX, by - hitY);
+                        if (sd <= splashRadius) {
+                            const dmg = (eb === p.target) ? p.damage : Math.floor(p.damage * 0.5);
+                            eb.hp -= dmg;
+                        }
                     }
                 }
                 this.effects.push({ type: 'hit', x: p.tx, y: p.ty, frame: 0, timer: 0 });
@@ -1574,13 +1609,24 @@ class GameState {
         div.addEventListener('click', () => {
             if (p.money < cost) { this.eva('Insufficient funds.'); return; }
             if (isUnit) {
-                const barracks = p.buildings.find(b => b.type === 'barracks' && b.built && !b.training);
-                if (!barracks) { this.eva('No available barracks.'); return; }
+                // Find barracks: prefer one with shortest queue
+                const allBarracks = p.buildings.filter(b => b.type === 'barracks' && b.built && b.hp > 0);
+                if (allBarracks.length === 0) { this.eva('No available barracks.'); return; }
+                // Sort by total queue length (training ? 1 : 0) + trainQueue
+                allBarracks.sort((a, b) => ((a.training ? 1 : 0) + a.trainQueue) - ((b.training ? 1 : 0) + b.trainQueue));
+                const barracks = allBarracks[0];
+                const totalQueued = (barracks.training ? 1 : 0) + barracks.trainQueue;
+                if (totalQueued >= 30) { this.eva('Training queue full (30 max).'); return; }
                 p.money -= cost;
-                barracks.training = 'soldier';
-                barracks.trainProgress = 0;
+                if (!barracks.training) {
+                    barracks.training = 'soldier';
+                    barracks.trainProgress = 0;
+                } else {
+                    barracks.trainQueue++;
+                }
                 this.updateMoney();
-                this.eva('Training soldier...');
+                const qTotal = (barracks.training ? 1 : 0) + barracks.trainQueue;
+                this.eva(`Training soldier... (${qTotal} in queue)`);
             } else {
                 this.placingBuilding = type;
                 this.eva(`Select location for ${name}.`);
@@ -1611,7 +1657,8 @@ class GameState {
             } else {
                 info.innerHTML = `<div style="color:#ffd700">${s.type === 'refinery' ? 'Refinery' : 'Barracks'}</div>
                     <div>HP: ${s.hp}/${s.maxHp}</div>
-                    ${s.training ? `<div>Training: ${Math.floor(s.trainProgress * 100)}%</div>` : ''}
+                    ${s.training ? `<div>Training: ${Math.floor(s.trainProgress * 100)}%${s.trainQueue > 0 ? ` (+${s.trainQueue} queued)` : ''}</div>` : ''}
+                    ${!s.built ? `<div style="color:#ff8800">Building: ${Math.floor(s.buildProgress * 100)}%</div>` : ''}
                     ${s.type === 'refinery' ? `<div style="color:#ffd700">+$${BUILD_TYPES.refinery.incomeRate}/2s</div>` : ''}`;
             }
         } else {
