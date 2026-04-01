@@ -636,18 +636,39 @@ class ModelFactory {
     // ==================== SELECTION RING ====================
 
     createSelectionRing(radius, color) {
-        const ringColor = color ? this._factionColor(color) : 0x00ff88;
-        const geo = new THREE.RingGeometry(radius - 0.02, radius, 24);
-        const mat = new THREE.MeshBasicMaterial({
-            color: ringColor,
+        const group = new THREE.Group();
+
+        // Ground circle (filled, semi-transparent)
+        const discGeo = new THREE.CircleGeometry(radius, 32);
+        const discMat = new THREE.MeshBasicMaterial({
+            color: 0x00ff88,
             transparent: true,
-            opacity: 0.6,
-            side: THREE.DoubleSide
+            opacity: 0.15,
+            side: THREE.DoubleSide,
+            depthWrite: false
         });
-        const ring = new THREE.Mesh(geo, mat);
+        const disc = new THREE.Mesh(discGeo, discMat);
+        disc.rotation.x = -Math.PI / 2;
+        disc.position.y = 0.01;
+        group.add(disc);
+
+        // Bright outer ring
+        const ringGeo = new THREE.RingGeometry(radius - 0.06, radius, 32);
+        const ringMat = new THREE.MeshBasicMaterial({
+            color: 0x00ff88,
+            transparent: true,
+            opacity: 0.9,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
         ring.rotation.x = -Math.PI / 2;
         ring.position.y = 0.02;
-        return ring;
+        group.add(ring);
+
+        group.userData.ringMat = ringMat;
+        group.userData.discMat = discMat;
+        return group;
     }
 
     // ==================== HEALTH BAR (3D billboard) ====================

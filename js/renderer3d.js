@@ -430,17 +430,23 @@ class Renderer3D {
                 const cx = entity.tx + entity.size / 2 - 0.5;
                 const cy = entity.ty + entity.size / 2 - 0.5;
                 pos = new THREE.Vector3(cx * this.tileSize, 0, cy * this.tileSize);
-                const ring = this.models.createSelectionRing(0.8, playerColor);
+                const ring = this.models.createSelectionRing(1.2, playerColor);
                 ring.position.copy(pos);
                 this.scene.add(ring);
                 this.selectionRings.push(ring);
             } else {
                 pos = new THREE.Vector3(entity.x * this.tileSize, 0, entity.y * this.tileSize);
-                const ring = this.models.createSelectionRing(0.2, playerColor);
+                const ring = this.models.createSelectionRing(0.35, playerColor);
                 ring.position.copy(pos);
                 this.scene.add(ring);
                 this.selectionRings.push(ring);
             }
+        }
+
+        // Animate selection ring pulsing
+        const pulse = 0.7 + Math.sin(this.time * 5) * 0.3;
+        for (const ring of this.selectionRings) {
+            if (ring.userData.ringMat) ring.userData.ringMat.opacity = pulse;
         }
     }
 
@@ -488,64 +494,64 @@ class Renderer3D {
     // ==================== HEALTH BARS ====================
 
     updateHealthBars(players) {
-        // Remove old bars
-        if (this._healthBars) {
-            for (const bar of this._healthBars) {
-                this.scene.remove(bar);
-            }
-        }
-        this._healthBars = [];
+        // No-op: health bars are now drawn as 2D overlay
+    }
 
+    // Draw health bars as 2D overlay on a canvas context
+    drawHealthBars2D(ctx, players, selectedSet) {
         for (const p of players) {
             for (const b of p.buildings) {
-                if (b.hp < b.maxHp) {
-                    const bar = this.models.createHealthBar();
+                // Show health bar if damaged or selected
+                if (b.hp < b.maxHp || selectedSet.has(b)) {
                     const cx = b.tx + b.size / 2 - 0.5;
                     const cy = b.ty + b.size / 2 - 0.5;
-                    bar.position.set(cx * this.tileSize, 1.8, cy * this.tileSize);
-                    bar.lookAt(this.camera.position);
-
+                    const screen = this.tileToScreen(cx, cy);
                     const ratio = b.hp / b.maxHp;
-                    bar.userData.fill.scale.x = ratio;
-                    bar.userData.fill.position.x = -(1 - ratio) * 0.2;
-                    bar.userData.fill.material.color.setHex(ratio > 0.5 ? 0x00ff00 : ratio > 0.25 ? 0xffff00 : 0xff0000);
-
-                    this.scene.add(bar);
-                    this._healthBars.push(bar);
+                    this._drawBar2D(ctx, screen.x, screen.y - 30, 40, 6, ratio);
                 }
 
                 // Training bar
                 if (b.training) {
-                    const bar = this.models.createHealthBar();
                     const cx = b.tx + b.size / 2 - 0.5;
                     const cy = b.ty + b.size / 2 - 0.5;
-                    bar.position.set(cx * this.tileSize, 1.6, cy * this.tileSize);
-                    bar.lookAt(this.camera.position);
-                    bar.userData.fill.scale.x = b.trainProgress;
-                    bar.userData.fill.position.x = -(1 - b.trainProgress) * 0.2;
-                    bar.userData.fill.material.color.setHex(0x00aaff);
-                    this.scene.add(bar);
-                    this._healthBars.push(bar);
+                    const screen = this.tileToScreen(cx, cy);
+                    this._drawBar2D(ctx, screen.x, screen.y - 20, 40, 4, b.trainProgress, '#00aaff');
                 }
             }
 
             for (const u of p.units) {
-                if (u.state !== 'dead' && u.hp < u.maxHp) {
-                    const bar = this.models.createHealthBar();
-                    bar.position.set(u.x * this.tileSize, 0.55, u.y * this.tileSize);
-                    bar.lookAt(this.camera.position);
-                    bar.scale.setScalar(0.5);
-
+                if (u.state === 'dead') continue;
+                if (u.hp < u.maxHp || selectedSet.has(u)) {
+                    const screen = this.tileToScreen(u.x, u.y);
                     const ratio = u.hp / u.maxHp;
-                    bar.userData.fill.scale.x = ratio;
-                    bar.userData.fill.position.x = -(1 - ratio) * 0.2;
-                    bar.userData.fill.material.color.setHex(ratio > 0.5 ? 0x00ff00 : ratio > 0.25 ? 0xffff00 : 0xff0000);
-
-                    this.scene.add(bar);
-                    this._healthBars.push(bar);
+                    this._drawBar2D(ctx, screen.x, screen.y - 18, 24, 5, ratio);
                 }
             }
         }
+    }
+
+    _drawBar2D(ctx, cx, cy, width, height, ratio, overrideColor) {
+        const x = cx - width / 2;
+        const y = cy - height / 2;
+
+        // Dark background
+        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        ctx.fillRect(x - 1, y - 1, width + 2, height + 2);
+
+        // White border
+        ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(x - 1, y - 1, width + 2, height + 2);
+
+        // Fill color
+        let color = overrideColor;
+        if (!color) {
+            if (ratio > 0.6) color = '#00ff44';
+            else if (ratio > 0.3) color = '#ffdd00';
+            else color = '#ff2200';
+        }
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y, width * ratio, height);
     }
 
     // ==================== BUILD MENU ICON RENDERER ====================
@@ -666,9 +672,10 @@ class Renderer3D {
 
     // Convert screen pixel to tile coordinate using raycasting
     screenToTile(px, py) {
+        const rect = this.renderer.domElement.getBoundingClientRect();
         const ndc = new THREE.Vector2(
-            (px / window.innerWidth) * 2 - 1,
-            -(py / window.innerHeight) * 2 + 1
+            ((px - rect.left) / rect.width) * 2 - 1,
+            -((py - rect.top) / rect.height) * 2 + 1
         );
 
         const raycaster = new THREE.Raycaster();
@@ -692,9 +699,10 @@ class Renderer3D {
     tileToScreen(tx, ty) {
         const worldPos = new THREE.Vector3(tx * this.tileSize, 0, ty * this.tileSize);
         worldPos.project(this.camera);
+        const rect = this.renderer.domElement.getBoundingClientRect();
         return {
-            x: (worldPos.x + 1) / 2 * window.innerWidth,
-            y: (-worldPos.y + 1) / 2 * window.innerHeight
+            x: (worldPos.x + 1) / 2 * rect.width + rect.left,
+            y: (-worldPos.y + 1) / 2 * rect.height + rect.top
         };
     }
 

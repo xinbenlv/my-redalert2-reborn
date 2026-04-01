@@ -81,6 +81,9 @@ class GameState {
         // Game over state
         this.gameOver = false;
 
+        // Command ping effects (2D overlay)
+        this.commandPings = [];
+
         // EVA
         this.evaEl = document.getElementById('eva-message');
         this.evaTimeout = null;
@@ -309,6 +312,9 @@ class GameState {
     onMouseMove(e) {
         this.hoverTile = this.renderer3d.screenToTile(e.clientX, e.clientY);
 
+        // Update cursor based on hover context
+        this._updateCursor(this.hoverTile);
+
         if (this.dragStart) {
             const dx = e.clientX - this.dragStart.x;
             const dy = e.clientY - this.dragStart.y;
@@ -379,6 +385,7 @@ class GameState {
     onRightClick(e) {
         if (this.selected.length === 0) return;
         const tile = this.renderer3d.screenToTile(e.clientX, e.clientY);
+        console.log('[RightClick] tile:', tile, 'selected:', this.selected.length, 'gameOver:', this.gameOver);
 
         // Check if right-clicked on an enemy unit
         const enemyUnit = this._findEnemyUnitAt(tile.x, tile.y);
@@ -391,6 +398,7 @@ class GameState {
                 u.path = this.findPath(Math.floor(u.x), Math.floor(u.y), Math.floor(enemyUnit.x), Math.floor(enemyUnit.y));
                 u.pathIdx = 0;
             }
+            this.commandPings.push({ tx: tile.x, ty: tile.y, color: '#ff2200', time: 0 });
             return;
         }
 
@@ -405,6 +413,7 @@ class GameState {
                 u.path = this.findPath(Math.floor(u.x), Math.floor(u.y), enemyBuilding.tx + 1, enemyBuilding.ty + 1);
                 u.pathIdx = 0;
             }
+            this.commandPings.push({ tx: enemyBuilding.tx + 1, ty: enemyBuilding.ty + 1, color: '#ff2200', time: 0 });
             return;
         }
 
@@ -416,6 +425,28 @@ class GameState {
             u.state = 'moving';
             u.path = this.findPath(Math.floor(u.x), Math.floor(u.y), tile.x, tile.y);
             u.pathIdx = 0;
+        }
+        this.commandPings.push({ tx: tile.x, ty: tile.y, color: '#00ff88', time: 0 });
+    }
+
+    _updateCursor(tile) {
+        const canvas = this.renderer3d.domElement;
+        canvas.classList.remove('cursor-move', 'cursor-attack');
+
+        if (this.placingBuilding) {
+            canvas.style.cursor = 'cell';
+            return;
+        }
+
+        canvas.style.cursor = '';
+
+        if (this.selected.length > 0 && this.selected.some(s => s.type === 'soldier')) {
+            const enemy = this._findEnemyUnitAt(tile.x, tile.y) || this._findEnemyBuildingAt(tile.x, tile.y);
+            if (enemy) {
+                canvas.classList.add('cursor-attack');
+            } else {
+                canvas.classList.add('cursor-move');
+            }
         }
     }
 
@@ -486,7 +517,14 @@ class GameState {
 
         const isWalkable = (x, y) => {
             if (x < 0 || y < 0 || x >= MAP_SIZE || y >= MAP_SIZE) return false;
-            return this.map[y][x].type !== 'water';
+            if (this.map[y][x].type === 'water') return false;
+            // Check building occupancy
+            for (const p of this.players) {
+                for (const b of p.buildings) {
+                    if (x >= b.tx && x < b.tx + b.size && y >= b.ty && y < b.ty + b.size) return false;
+                }
+            }
+            return true;
         };
 
         let iterations = 0;
@@ -683,6 +721,23 @@ class GameState {
 
                 if (u.state === 'idle') {
                     u.frame = 0;
+                }
+
+                // Unit separation force to prevent stacking
+                if (u.state !== 'dead') {
+                    for (const p2 of this.players) {
+                        for (const other of p2.units) {
+                            if (other === u || other.state === 'dead') continue;
+                            const sdx = u.x - other.x;
+                            const sdy = u.y - other.y;
+                            const sd = Math.hypot(sdx, sdy);
+                            if (sd < 0.3 && sd > 0.001) {
+                                const pushStrength = (0.3 - sd) * 0.05;
+                                u.x += (sdx / sd) * pushStrength;
+                                u.y += (sdy / sd) * pushStrength;
+                            }
+                        }
+                    }
                 }
             }
             p.units = p.units.filter(u => u.state !== 'dead' || u.deadTimer < 3000);
@@ -968,18 +1023,32 @@ class GameState {
         // Render 3D scene
         this.renderer3d.render(dt);
 
-        // Draw 2D overlay (selection box)
+        // Draw 2D overlay
         this.overlayCtx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
+
+        // Selection box drag rectangle
         if (this.selBox) {
             this.overlayCtx.strokeStyle = '#00ff88';
-            this.overlayCtx.lineWidth = 1;
+            this.overlayCtx.lineWidth = 1.5;
             this.overlayCtx.setLineDash([4, 4]);
             this.overlayCtx.strokeRect(
                 this.selBox.x1, this.selBox.y1,
                 this.selBox.x2 - this.selBox.x1, this.selBox.y2 - this.selBox.y1
             );
+            this.overlayCtx.fillStyle = 'rgba(0,255,136,0.08)';
+            this.overlayCtx.fillRect(
+                this.selBox.x1, this.selBox.y1,
+                this.selBox.x2 - this.selBox.x1, this.selBox.y2 - this.selBox.y1
+            );
             this.overlayCtx.setLineDash([]);
         }
+
+        // 2D health bars
+        const selectedSet = new Set(this.selected);
+        this.renderer3d.drawHealthBars2D(this.overlayCtx, this.players, selectedSet);
+
+        // Command ping effects
+        this._drawCommandPings(this.overlayCtx, dt);
 
         // Minimap
         this.renderMinimap();
@@ -1060,6 +1129,29 @@ class GameState {
             this.renderer3d.showPlacementPreview(this.placingBuilding, this.hoverTile.x, this.hoverTile.y, this.players[this.currentPlayer].color);
         } else {
             this.renderer3d.hidePlacementPreview();
+        }
+    }
+
+    _drawCommandPings(ctx, dt) {
+        for (let i = this.commandPings.length - 1; i >= 0; i--) {
+            const ping = this.commandPings[i];
+            ping.time += dt;
+            const progress = ping.time / 500; // 0.5 second duration
+            if (progress >= 1) {
+                this.commandPings.splice(i, 1);
+                continue;
+            }
+            const screen = this.renderer3d.tileToScreen(ping.tx, ping.ty);
+            const radius = 5 + progress * 20;
+            const alpha = 1 - progress;
+
+            ctx.beginPath();
+            ctx.arc(screen.x, screen.y, radius, 0, Math.PI * 2);
+            ctx.strokeStyle = ping.color;
+            ctx.lineWidth = 2.5 * (1 - progress * 0.5);
+            ctx.globalAlpha = alpha;
+            ctx.stroke();
+            ctx.globalAlpha = 1;
         }
     }
 
