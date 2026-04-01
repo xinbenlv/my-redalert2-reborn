@@ -684,7 +684,7 @@ class GameState {
         };
 
         let iterations = 0;
-        while (open.length > 0 && iterations < 500) {
+        while (open.length > 0 && iterations < 2000) {
             iterations++;
             open.sort((a, b) => a.f - b.f);
             const curr = open.shift();
@@ -717,7 +717,23 @@ class GameState {
                 }
             }
         }
-        return [{ x: ex, y: ey }];
+        // No path found — do NOT walk through obstacles
+        // Find closest explored tile to destination instead
+        if (closed.size > 0) {
+            let bestKey = null, bestDist = Infinity;
+            for (const k of closed) {
+                const [cx, cy] = k.split(',').map(Number);
+                const d = Math.hypot(cx - ex, cy - ey);
+                if (d < bestDist) { bestDist = d; bestKey = k; }
+            }
+            if (bestKey) {
+                const [bx, by] = bestKey.split(',').map(Number);
+                if (bx !== sx || by !== sy) {
+                    return [{ x: bx, y: by }];
+                }
+            }
+        }
+        return [];
     }
 
     // ==================== UPDATE ====================
@@ -833,9 +849,12 @@ class GameState {
                         }
 
                         // Move toward attack target using pathfinding
-                        if (!u.path || u.path.length === 0) {
+                        // Repath every 2s or if no path exists
+                        u._repathTimer = (u._repathTimer || 0) + dt;
+                        if (!u.path || u.path.length === 0 || u.pathIdx >= u.path.length || u._repathTimer > 2000) {
                             u.path = this.findPath(Math.floor(u.x), Math.floor(u.y), Math.floor(targetX), Math.floor(targetY));
                             u.pathIdx = 0;
+                            u._repathTimer = 0;
                         }
                         // Follow path waypoints
                         if (u.path && u.pathIdx < u.path.length) {
@@ -902,6 +921,7 @@ class GameState {
 
                 // Unit separation force to prevent stacking
                 if (u.state !== 'dead') {
+                    let pushX = 0, pushY = 0;
                     for (const p2 of this.players) {
                         for (const other of p2.units) {
                             if (other === u || other.state === 'dead') continue;
@@ -910,9 +930,19 @@ class GameState {
                             const sd = Math.hypot(sdx, sdy);
                             if (sd < 0.3 && sd > 0.001) {
                                 const pushStrength = (0.3 - sd) * 0.05;
-                                u.x += (sdx / sd) * pushStrength;
-                                u.y += (sdy / sd) * pushStrength;
+                                pushX += (sdx / sd) * pushStrength;
+                                pushY += (sdy / sd) * pushStrength;
                             }
+                        }
+                    }
+                    // Only apply push if destination tile is walkable (not water)
+                    if (pushX !== 0 || pushY !== 0) {
+                        const newTX = Math.floor(u.x + pushX);
+                        const newTY = Math.floor(u.y + pushY);
+                        if (newTX >= 0 && newTY >= 0 && newTX < MAP_SIZE && newTY < MAP_SIZE &&
+                            this.map[newTY]?.[newTX]?.type !== 'water') {
+                            u.x += pushX;
+                            u.y += pushY;
                         }
                     }
                 }
