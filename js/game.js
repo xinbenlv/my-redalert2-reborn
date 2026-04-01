@@ -886,13 +886,44 @@ class GameState {
                             }
                         }
                         continue;
-                    } else if (u.state === 'moving' && u.path && u.pathIdx < u.path.length) {
-                        const waypoint = u.path[u.pathIdx];
-                        targetX = waypoint.x;
-                        targetY = waypoint.y;
-                    } else if (u.state === 'moving' && u.target) {
-                        targetX = u.target.x;
-                        targetY = u.target.y;
+                    } else if (u.state === 'moving') {
+                        // While moving, check for enemies in attack range → auto-engage
+                        const nearbyEnemy = this._findNearestEnemy(u, u.owner);
+                        if (nearbyEnemy) {
+                            const ed = Math.hypot(u.x - (nearbyEnemy.x !== undefined ? nearbyEnemy.x : nearbyEnemy.tx + 1),
+                                                   u.y - (nearbyEnemy.y !== undefined ? nearbyEnemy.y : nearbyEnemy.ty + 1));
+                            if (ed <= u.range) {
+                                // Enemy in attack range → stop and engage
+                                // Save move target so player can resume later
+                                u._savedTarget = u.target;
+                                u._savedPath = u.path;
+                                u._savedPathIdx = u.pathIdx;
+                                u.attackTarget = nearbyEnemy;
+                                u.state = 'engaging'; // special state: auto-engaged during move
+                                u.target = null;
+                                u.path = null;
+                                this.faceToward(u, nearbyEnemy.x !== undefined ? nearbyEnemy.x : nearbyEnemy.tx + 1,
+                                                nearbyEnemy.y !== undefined ? nearbyEnemy.y : nearbyEnemy.ty + 1);
+                                if (u.fireTimer <= 0) {
+                                    u.fireTimer = u.fireRate;
+                                    this.fireAt(u, nearbyEnemy);
+                                }
+                                continue;
+                            }
+                        }
+
+                        // Normal movement
+                        if (u.path && u.pathIdx < u.path.length) {
+                            const waypoint = u.path[u.pathIdx];
+                            targetX = waypoint.x;
+                            targetY = waypoint.y;
+                        } else if (u.target) {
+                            targetX = u.target.x;
+                            targetY = u.target.y;
+                        } else {
+                            u.state = 'idle';
+                            continue;
+                        }
                     } else {
                         u.state = 'idle';
                         continue;
@@ -916,6 +947,40 @@ class GameState {
                         u.y += (dy / dist) * Math.min(speed, dist);
                         this.faceToward(u, targetX, targetY);
                     }
+                }
+
+                // Engaging state: auto-engaged enemy during movement
+                if (u.state === 'engaging') {
+                    const at = u.attackTarget;
+                    if (!at || (at.hp !== undefined && at.hp <= 0) || at.state === 'dead') {
+                        // Enemy dead → go idle (player must re-issue move command)
+                        u.attackTarget = null;
+                        u.state = 'idle';
+                        u._savedTarget = null;
+                        u._savedPath = null;
+                        u._savedPathIdx = null;
+                        continue;
+                    }
+
+                    const etx = at.x !== undefined ? at.x : at.tx + 1;
+                    const ety = at.y !== undefined ? at.y : at.ty + 1;
+                    const ed = Math.hypot(u.x - etx, u.y - ety);
+
+                    if (ed <= u.range) {
+                        // In range — keep firing
+                        this.faceToward(u, etx, ety);
+                        if (u.fireTimer <= 0) {
+                            u.fireTimer = u.fireRate;
+                            this.fireAt(u, at);
+                        }
+                    } else {
+                        // Enemy moved out of range — chase them (not resume original move)
+                        u.state = 'attacking';
+                        u._savedTarget = null;
+                        u._savedPath = null;
+                        u._savedPathIdx = null;
+                    }
+                    continue;
                 }
 
                 if (u.state === 'idle') {
