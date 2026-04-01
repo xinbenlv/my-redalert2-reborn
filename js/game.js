@@ -832,15 +832,36 @@ class GameState {
                             continue;
                         }
 
-                        // Move toward attack target
-                        const dx = targetX - u.x;
-                        const dy = targetY - u.y;
-                        const d = Math.hypot(dx, dy);
-                        if (d > 0.1) {
-                            const speed = u.speed * dt / 1000;
-                            u.x += (dx / d) * Math.min(speed, d);
-                            u.y += (dy / d) * Math.min(speed, d);
-                            this.faceToward(u, targetX, targetY);
+                        // Move toward attack target using pathfinding
+                        if (!u.path || u.path.length === 0) {
+                            u.path = this.findPath(Math.floor(u.x), Math.floor(u.y), Math.floor(targetX), Math.floor(targetY));
+                            u.pathIdx = 0;
+                        }
+                        // Follow path waypoints
+                        if (u.path && u.pathIdx < u.path.length) {
+                            const wp = u.path[u.pathIdx];
+                            const dx = wp.x - u.x;
+                            const dy = wp.y - u.y;
+                            const d = Math.hypot(dx, dy);
+                            if (d < 0.2) {
+                                u.pathIdx++;
+                            } else if (d > 0.1) {
+                                const speed = u.speed * dt / 1000;
+                                u.x += (dx / d) * Math.min(speed, d);
+                                u.y += (dy / d) * Math.min(speed, d);
+                                this.faceToward(u, wp.x, wp.y);
+                            }
+                        } else {
+                            // Fallback: direct move (shouldn't happen often)
+                            const dx = targetX - u.x;
+                            const dy = targetY - u.y;
+                            const d = Math.hypot(dx, dy);
+                            if (d > 0.1) {
+                                const speed = u.speed * dt / 1000;
+                                u.x += (dx / d) * Math.min(speed, d);
+                                u.y += (dy / d) * Math.min(speed, d);
+                                this.faceToward(u, targetX, targetY);
+                            }
                         }
                         continue;
                     } else if (u.state === 'moving' && u.path && u.pathIdx < u.path.length) {
