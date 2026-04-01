@@ -106,6 +106,14 @@ class GameState {
         this.setupUI();
         this.setupSidebarToggle();
         this.eva('Construction complete. Base established. Enemy detected!');
+
+        // Version info
+        const vEl = document.getElementById('version-info');
+        if (vEl) {
+            const v = window.__VERSION__ || '0.0.0';
+            const h = window.__GIT_HASH__ || 'dev';
+            vEl.textContent = `v${v} (${h})`;
+        }
         requestAnimationFrame(t => this.loop(t));
     }
 
