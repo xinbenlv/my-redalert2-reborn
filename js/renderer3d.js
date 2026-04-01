@@ -63,6 +63,12 @@ class Renderer3D {
 
         // Time tracking for animations
         this.time = 0;
+
+        // Icon renderer for build menu
+        this._iconRenderer = null;
+        this._iconScene = null;
+        this._iconCamera = null;
+        this._iconCache = {};
     }
 
     _setupLights() {
@@ -212,14 +218,14 @@ class Renderer3D {
 
     // ==================== BUILDING MANAGEMENT ====================
 
-    addBuilding(building) {
+    addBuilding(building, factionColor) {
         if (this.buildingMeshes.has(building)) return;
 
         let mesh;
         if (building.type === 'refinery') {
-            mesh = this.models.createRefinery();
+            mesh = this.models.createRefinery(factionColor);
         } else if (building.type === 'barracks') {
-            mesh = this.models.createBarracks();
+            mesh = this.models.createBarracks(factionColor);
         }
 
         if (!mesh) return;
@@ -236,10 +242,7 @@ class Renderer3D {
 
     updateBuilding(building) {
         const mesh = this.buildingMeshes.get(building);
-        if (!mesh) {
-            this.addBuilding(building);
-            return;
-        }
+        if (!mesh) return;
 
         // Build progress: scale Y up during construction
         if (!building.built) {
@@ -261,12 +264,12 @@ class Renderer3D {
 
     // ==================== UNIT MANAGEMENT ====================
 
-    addUnit(unit) {
+    addUnit(unit, factionColor) {
         if (this.unitMeshes.has(unit)) return;
 
         let mesh;
         if (unit.type === 'soldier') {
-            mesh = this.models.createSoldier();
+            mesh = this.models.createSoldier(factionColor);
         }
         if (!mesh) return;
 
@@ -282,11 +285,7 @@ class Renderer3D {
 
     updateUnit(unit, dt) {
         let mesh = this.unitMeshes.get(unit);
-        if (!mesh) {
-            this.addUnit(unit);
-            mesh = this.unitMeshes.get(unit);
-            if (!mesh) return;
-        }
+        if (!mesh) return;
 
         // Position
         mesh.position.set(
@@ -296,7 +295,6 @@ class Renderer3D {
         );
 
         // Direction (8 directions mapped to Y rotation)
-        // dir: 0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW
         const dirAngles = [
             Math.PI,        // 0: N (away from camera)
             Math.PI * 0.75, // 1: NE
@@ -334,6 +332,16 @@ class Renderer3D {
             this.models.animateSoldierIdle(mesh);
             this.models.flashMuzzle(mesh, false);
         }
+    }
+
+    setUnitVisible(unit, visible) {
+        const mesh = this.unitMeshes.get(unit);
+        if (mesh) mesh.visible = visible;
+    }
+
+    setBuildingVisible(building, visible) {
+        const mesh = this.buildingMeshes.get(building);
+        if (mesh) mesh.visible = visible;
     }
 
     removeUnit(unit) {
@@ -408,7 +416,7 @@ class Renderer3D {
 
     // ==================== SELECTION ====================
 
-    updateSelection(selected) {
+    updateSelection(selected, playerColor) {
         // Remove old rings
         for (const ring of this.selectionRings) {
             this.scene.remove(ring);
@@ -422,13 +430,13 @@ class Renderer3D {
                 const cx = entity.tx + entity.size / 2 - 0.5;
                 const cy = entity.ty + entity.size / 2 - 0.5;
                 pos = new THREE.Vector3(cx * this.tileSize, 0, cy * this.tileSize);
-                const ring = this.models.createSelectionRing(0.8);
+                const ring = this.models.createSelectionRing(0.8, playerColor);
                 ring.position.copy(pos);
                 this.scene.add(ring);
                 this.selectionRings.push(ring);
             } else {
                 pos = new THREE.Vector3(entity.x * this.tileSize, 0, entity.y * this.tileSize);
-                const ring = this.models.createSelectionRing(0.2);
+                const ring = this.models.createSelectionRing(0.2, playerColor);
                 ring.position.copy(pos);
                 this.scene.add(ring);
                 this.selectionRings.push(ring);
@@ -438,12 +446,12 @@ class Renderer3D {
 
     // ==================== BUILDING PLACEMENT PREVIEW ====================
 
-    showPlacementPreview(type, tx, ty) {
+    showPlacementPreview(type, tx, ty, factionColor) {
         if (!this._placementPreview) {
             if (type === 'refinery') {
-                this._placementPreview = this.models.createRefinery();
+                this._placementPreview = this.models.createRefinery(factionColor);
             } else {
-                this._placementPreview = this.models.createBarracks();
+                this._placementPreview = this.models.createBarracks(factionColor);
             }
             this._placementPreview.traverse(child => {
                 if (child.material) {
@@ -459,7 +467,7 @@ class Renderer3D {
         // Recreate if type changed
         if (this._placementPreviewType !== type) {
             this.hidePlacementPreview();
-            this.showPlacementPreview(type, tx, ty);
+            this.showPlacementPreview(type, tx, ty, factionColor);
             return;
         }
 
@@ -538,6 +546,76 @@ class Renderer3D {
                 }
             }
         }
+    }
+
+    // ==================== BUILD MENU ICON RENDERER ====================
+
+    renderBuildIcon(type, factionColor, size) {
+        size = size || 64;
+        const cacheKey = type + '_' + (factionColor || 'default') + '_' + size;
+        if (this._iconCache[cacheKey]) return this._iconCache[cacheKey];
+
+        // Create offscreen renderer if needed
+        if (!this._iconRenderer) {
+            this._iconRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            this._iconRenderer.setSize(size, size);
+            this._iconRenderer.setPixelRatio(1);
+
+            this._iconScene = new THREE.Scene();
+
+            // Lights for icon scene
+            const sun = new THREE.DirectionalLight(0xffeedd, 1.5);
+            sun.position.set(3, 5, 2);
+            this._iconScene.add(sun);
+            const ambient = new THREE.AmbientLight(0x445566, 0.8);
+            this._iconScene.add(ambient);
+            const hemi = new THREE.HemisphereLight(0x88aacc, 0x443322, 0.3);
+            this._iconScene.add(hemi);
+
+            // Isometric ortho camera for icons
+            const s = 1.8;
+            this._iconCamera = new THREE.OrthographicCamera(-s, s, s, -s, 0.1, 50);
+            this._iconCamera.rotation.order = 'YXZ';
+            this._iconCamera.rotateY(Math.PI / 4);
+            this._iconCamera.rotateX(Math.atan(-1 / Math.sqrt(2)));
+            this._iconCamera.position.set(5, 5, 5);
+        }
+
+        this._iconRenderer.setSize(size, size);
+
+        // Clear old children from icon scene (keep lights)
+        const toRemove = [];
+        this._iconScene.children.forEach(c => {
+            if (!c.isLight) toRemove.push(c);
+        });
+        toRemove.forEach(c => this._iconScene.remove(c));
+
+        // Create model
+        let model;
+        if (type === 'refinery') {
+            model = this.models.createRefinery(factionColor);
+        } else if (type === 'barracks') {
+            model = this.models.createBarracks(factionColor);
+        } else if (type === 'soldier') {
+            model = this.models.createSoldier(factionColor);
+            model.scale.setScalar(4); // scale up soldier to fill icon
+        }
+
+        if (model) {
+            this._iconScene.add(model);
+        }
+
+        this._iconRenderer.render(this._iconScene, this._iconCamera);
+
+        // Copy to a canvas we can use as an image
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(this._iconRenderer.domElement, 0, 0);
+
+        this._iconCache[cacheKey] = canvas;
+        return canvas;
     }
 
     // ==================== CAMERA ====================
@@ -650,9 +728,6 @@ class Renderer3D {
 
         this.renderer.render(this.scene, this.camera);
     }
-
-    // ==================== SELECTION BOX (2D overlay) ====================
-    // Selection box is drawn by the game via a 2D canvas overlay
 
     // ==================== CLEANUP ====================
 

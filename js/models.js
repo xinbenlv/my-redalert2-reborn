@@ -22,9 +22,16 @@ class ModelFactory {
         });
     }
 
+    _factionColor(color) {
+        if (!color) return 0xcc2222;
+        if (typeof color === 'string') return parseInt(color.replace('#', ''), 16);
+        return color;
+    }
+
     // ==================== SOVIET REFINERY ====================
 
-    createRefinery() {
+    createRefinery(factionColor) {
+        const fc = this._factionColor(factionColor);
         const group = new THREE.Group();
 
         // Concrete base slab
@@ -81,8 +88,8 @@ class ModelFactory {
         cap2.position.set(0.4, 1.05, 0.2);
         group.add(cap2);
 
-        // Red stripes on tanks
-        const stripeMat = this._mat(0xcc2222, { roughness: 0.5, metalness: 0.4 });
+        // Faction-colored stripes on tanks
+        const stripeMat = this._mat(fc, { roughness: 0.5, metalness: 0.4 });
         const stripe1 = new THREE.Mesh(
             new THREE.CylinderGeometry(0.355, 0.355, 0.08, 12),
             stripeMat
@@ -96,6 +103,14 @@ class ModelFactory {
         );
         stripe2.position.set(0.4, 0.75, 0.2);
         group.add(stripe2);
+
+        // Faction accent band on base
+        const baseBand = new THREE.Mesh(
+            new THREE.BoxGeometry(2.02, 0.06, 0.06),
+            this._mat(fc, { roughness: 0.5 })
+        );
+        baseBand.position.set(0, 0.17, 1.0);
+        group.add(baseBand);
 
         // Pipe network connecting tanks
         const pipeMat = this._mat(0x555555, { roughness: 0.3, metalness: 0.7 });
@@ -182,6 +197,7 @@ class ModelFactory {
         group.add(screen);
 
         group.userData.modelType = 'refinery';
+        group.userData.factionColor = fc;
         return group;
     }
 
@@ -215,7 +231,8 @@ class ModelFactory {
 
     // ==================== SOVIET BARRACKS ====================
 
-    createBarracks() {
+    createBarracks(factionColor) {
+        const fc = this._factionColor(factionColor);
         const group = new THREE.Group();
 
         // Main building body
@@ -249,6 +266,14 @@ class ModelFactory {
         roof.position.set(-0.75, 0.8, -0.8);
         roof.castShadow = true;
         group.add(roof);
+
+        // Faction-colored roof accent stripe
+        const roofStripe = new THREE.Mesh(
+            new THREE.BoxGeometry(1.5, 0.03, 0.15),
+            this._mat(fc, { roughness: 0.5, metalness: 0.4 })
+        );
+        roofStripe.position.set(0, 1.18, 0);
+        group.add(roofStripe);
 
         // Guard tower on corner
         const tower = new THREE.Mesh(
@@ -322,8 +347,8 @@ class ModelFactory {
         door.position.set(0, 0.35, 0.701);
         group.add(door);
 
-        // Door frame
-        const frameMat = this._mat(0x5a4a3a);
+        // Door frame with faction color
+        const frameMat = this._mat(fc, { roughness: 0.6 });
         const frameTop = new THREE.Mesh(
             new THREE.BoxGeometry(0.35, 0.04, 0.04),
             frameMat
@@ -360,27 +385,34 @@ class ModelFactory {
         pole.position.set(-0.65, 1.3, 0.55);
         group.add(pole);
 
-        // Flag (plane with red material)
+        // Flag (plane with faction color)
         const flagGeo = new THREE.PlaneGeometry(0.35, 0.2, 8, 4);
         const flag = new THREE.Mesh(
             flagGeo,
-            this._mat(0xcc2222, { roughness: 0.8, side: THREE.DoubleSide })
+            this._mat(fc, { roughness: 0.8, side: THREE.DoubleSide })
         );
         flag.position.set(-0.47, 1.7, 0.55);
         group.add(flag);
         group.userData.flag = flag;
 
         group.userData.modelType = 'barracks';
+        group.userData.factionColor = fc;
         return group;
     }
 
     // ==================== SOVIET SOLDIER ====================
 
-    createSoldier() {
+    createSoldier(factionColor) {
+        const fc = this._factionColor(factionColor);
         const group = new THREE.Group();
 
         const skinMat = this._mat(0xd4a574, { roughness: 0.8, metalness: 0.1 });
-        const uniformMat = this._mat(0x6b2222, { roughness: 0.75 });
+        // Uniform color: darken the faction color for the uniform
+        const r = ((fc >> 16) & 0xff) / 255;
+        const g = ((fc >> 8) & 0xff) / 255;
+        const b = (fc & 0xff) / 255;
+        const uniformHex = new THREE.Color(r * 0.5, g * 0.5, b * 0.5);
+        const uniformMat = this._mat(uniformHex, { roughness: 0.75 });
         const bootMat = this._mat(0x2a2a2a, { roughness: 0.8 });
         const helmetMat = this._mat(0x3a4a3a, { roughness: 0.6, metalness: 0.3 });
 
@@ -402,6 +434,14 @@ class ModelFactory {
         helmet.castShadow = true;
         group.add(helmet);
 
+        // Helmet faction stripe
+        const helmetStripe = new THREE.Mesh(
+            new THREE.BoxGeometry(0.14, 0.015, 0.015),
+            this._mat(fc, { roughness: 0.5 })
+        );
+        helmetStripe.position.set(0, 0.43, 0.06);
+        group.add(helmetStripe);
+
         // Torso
         const torso = new THREE.Mesh(
             new THREE.BoxGeometry(0.12, 0.14, 0.08),
@@ -410,6 +450,21 @@ class ModelFactory {
         torso.position.y = 0.26;
         torso.castShadow = true;
         group.add(torso);
+
+        // Faction shoulder patches
+        const patchMat = this._mat(fc, { roughness: 0.5 });
+        const leftPatch = new THREE.Mesh(
+            new THREE.BoxGeometry(0.025, 0.04, 0.085),
+            patchMat
+        );
+        leftPatch.position.set(-0.065, 0.31, 0);
+        group.add(leftPatch);
+        const rightPatch = new THREE.Mesh(
+            new THREE.BoxGeometry(0.025, 0.04, 0.085),
+            patchMat
+        );
+        rightPatch.position.set(0.065, 0.31, 0);
+        group.add(rightPatch);
 
         // Left arm
         const leftArm = new THREE.Mesh(
@@ -486,6 +541,7 @@ class ModelFactory {
         group.userData.muzzleFlash = muzzleFlash;
 
         group.userData.modelType = 'soldier';
+        group.userData.factionColor = fc;
         return group;
     }
 
@@ -579,10 +635,11 @@ class ModelFactory {
 
     // ==================== SELECTION RING ====================
 
-    createSelectionRing(radius) {
+    createSelectionRing(radius, color) {
+        const ringColor = color ? this._factionColor(color) : 0x00ff88;
         const geo = new THREE.RingGeometry(radius - 0.02, radius, 24);
         const mat = new THREE.MeshBasicMaterial({
-            color: 0x00ff88,
+            color: ringColor,
             transparent: true,
             opacity: 0.6,
             side: THREE.DoubleSide

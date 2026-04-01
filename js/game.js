@@ -1,6 +1,7 @@
 // =====================================================
 // RED ALERT 2: REBORN — Main Game Engine (Three.js WebGL)
 // Simplified: 2 buildings (Refinery, Barracks) + 1 unit (Soldier)
+// Two-player: Human (Red) vs AI (Blue)
 // =====================================================
 
 // ==================== CONSTANTS ====================
@@ -50,9 +51,10 @@ class GameState {
         this.fog = [];
         this.generateMap();
 
-        // Players
+        // Players: Human (Red) vs AI (Blue)
         this.players = [
             { faction: 'soviet', money: 5000, buildings: [], units: [], color: '#cc2222', isAI: false },
+            { faction: 'soviet', money: 5000, buildings: [], units: [], color: '#2266cc', isAI: true }
         ];
         this.currentPlayer = 0;
 
@@ -74,6 +76,10 @@ class GameState {
         this.waterFrame = 0;
         this.waterTimer = 0;
         this.aiTimer = 0;
+        this.aiDecisionInterval = 3000 + Math.random() * 2000;
+
+        // Game over state
+        this.gameOver = false;
 
         // EVA
         this.evaEl = document.getElementById('eva-message');
@@ -82,16 +88,19 @@ class GameState {
         // Build terrain in 3D
         this.renderer3d.buildTerrain(this.map, MAP_SIZE);
 
-        // Spawn base
+        // Spawn bases for both players
         this.spawnBase(0, 8, 8);
+        this.spawnBase(1, MAP_SIZE - 10, MAP_SIZE - 10);
 
-        // Set initial camera
+        // Set initial camera on player base
+        this.camTileX = 10;
+        this.camTileY = 10;
         this.renderer3d.setCameraTarget(this.camTileX, this.camTileY);
 
         // Start
         this.setupInput();
         this.setupUI();
-        this.eva('Construction complete. Base established.');
+        this.eva('Construction complete. Base established. Enemy detected!');
         requestAnimationFrame(t => this.loop(t));
     }
 
@@ -118,7 +127,7 @@ class GameState {
 
                 if (type === 'grass') {
                     const oreDist1 = Math.sqrt((x - 15)**2 + (y - 15)**2);
-                    const oreDist2 = Math.sqrt((x - MAP_SIZE - 15)**2 + (y - MAP_SIZE + 15)**2);
+                    const oreDist2 = Math.sqrt((x - (MAP_SIZE - 15))**2 + (y - (MAP_SIZE - 15))**2);
                     const oreDist3 = Math.sqrt((x - MAP_SIZE/2)**2 + (y - MAP_SIZE/2)**2);
                     if (oreDist1 < 3 || oreDist2 < 3 || oreDist3 < 3) type = 'ore';
                 }
@@ -371,6 +380,35 @@ class GameState {
         if (this.selected.length === 0) return;
         const tile = this.renderer3d.screenToTile(e.clientX, e.clientY);
 
+        // Check if right-clicked on an enemy unit
+        const enemyUnit = this._findEnemyUnitAt(tile.x, tile.y);
+        if (enemyUnit) {
+            for (const u of this.selected) {
+                if (u.type !== 'soldier') continue;
+                u.attackTarget = enemyUnit;
+                u.target = null;
+                u.state = 'attacking';
+                u.path = this.findPath(Math.floor(u.x), Math.floor(u.y), Math.floor(enemyUnit.x), Math.floor(enemyUnit.y));
+                u.pathIdx = 0;
+            }
+            return;
+        }
+
+        // Check if right-clicked on an enemy building
+        const enemyBuilding = this._findEnemyBuildingAt(tile.x, tile.y);
+        if (enemyBuilding) {
+            for (const u of this.selected) {
+                if (u.type !== 'soldier') continue;
+                u.attackTarget = enemyBuilding;
+                u.target = null;
+                u.state = 'attacking';
+                u.path = this.findPath(Math.floor(u.x), Math.floor(u.y), enemyBuilding.tx + 1, enemyBuilding.ty + 1);
+                u.pathIdx = 0;
+            }
+            return;
+        }
+
+        // Move command
         for (const u of this.selected) {
             if (u.type !== 'soldier') continue;
             u.target = { x: tile.x, y: tile.y };
@@ -379,6 +417,27 @@ class GameState {
             u.path = this.findPath(Math.floor(u.x), Math.floor(u.y), tile.x, tile.y);
             u.pathIdx = 0;
         }
+    }
+
+    _findEnemyUnitAt(tx, ty) {
+        for (let pi = 0; pi < this.players.length; pi++) {
+            if (pi === this.currentPlayer) continue;
+            for (const u of this.players[pi].units) {
+                if (u.state === 'dead') continue;
+                if (Math.hypot(u.x - tx, u.y - ty) < 1.5) return u;
+            }
+        }
+        return null;
+    }
+
+    _findEnemyBuildingAt(tx, ty) {
+        for (let pi = 0; pi < this.players.length; pi++) {
+            if (pi === this.currentPlayer) continue;
+            for (const b of this.players[pi].buildings) {
+                if (tx >= b.tx && tx < b.tx + b.size && ty >= b.ty && ty < b.ty + b.size) return b;
+            }
+        }
+        return null;
     }
 
     tryPlaceBuilding(px, py) {
@@ -470,13 +529,16 @@ class GameState {
     // ==================== UPDATE ====================
 
     update(dt) {
+        if (this.gameOver) return;
         this.updateCamera(dt);
         this.updateBuildings(dt);
         this.updateUnits(dt);
+        this.updateAutoAttack(dt);
         this.updateProjectiles(dt);
         this.updateEffects(dt);
         this.updateFog();
         this.updateAI(dt);
+        this.checkVictoryConditions();
     }
 
     updateCamera(dt) {
@@ -575,6 +637,18 @@ class GameState {
                             }
                             continue;
                         }
+
+                        // Move toward attack target
+                        const dx = targetX - u.x;
+                        const dy = targetY - u.y;
+                        const d = Math.hypot(dx, dy);
+                        if (d > 0.1) {
+                            const speed = u.speed * dt / 1000;
+                            u.x += (dx / d) * Math.min(speed, d);
+                            u.y += (dy / d) * Math.min(speed, d);
+                            this.faceToward(u, targetX, targetY);
+                        }
+                        continue;
                     } else if (u.state === 'moving' && u.path && u.pathIdx < u.path.length) {
                         const waypoint = u.path[u.pathIdx];
                         targetX = waypoint.x;
@@ -613,6 +687,45 @@ class GameState {
             }
             p.units = p.units.filter(u => u.state !== 'dead' || u.deadTimer < 3000);
         }
+    }
+
+    // ==================== AUTO-ATTACK ====================
+
+    updateAutoAttack(dt) {
+        for (let pi = 0; pi < this.players.length; pi++) {
+            const p = this.players[pi];
+            for (const u of p.units) {
+                if (u.state !== 'idle' || u.hp <= 0 || u.state === 'dead') continue;
+
+                // Find nearest enemy in sight range
+                const enemy = this._findNearestEnemy(u, pi);
+                if (enemy) {
+                    u.attackTarget = enemy;
+                    u.state = 'attacking';
+                }
+            }
+        }
+    }
+
+    _findNearestEnemy(unit, ownerIdx) {
+        let best = null, bestDist = unit.sight + 1;
+        for (let pi = 0; pi < this.players.length; pi++) {
+            if (pi === ownerIdx) continue;
+            // Check enemy units
+            for (const eu of this.players[pi].units) {
+                if (eu.state === 'dead' || eu.hp <= 0) continue;
+                const d = Math.hypot(unit.x - eu.x, unit.y - eu.y);
+                if (d < bestDist) { bestDist = d; best = eu; }
+            }
+            // Check enemy buildings
+            for (const eb of this.players[pi].buildings) {
+                if (eb.hp <= 0) continue;
+                const bx = eb.tx + 1, by = eb.ty + 1;
+                const d = Math.hypot(unit.x - bx, unit.y - by);
+                if (d < bestDist) { bestDist = d; best = eb; }
+            }
+        }
+        return best;
     }
 
     faceToward(u, tx, ty) {
@@ -707,7 +820,144 @@ class GameState {
         }
     }
 
-    updateAI(dt) {}
+    // ==================== AI SYSTEM ====================
+
+    updateAI(dt) {
+        this.aiTimer += dt;
+        if (this.aiTimer < this.aiDecisionInterval) return;
+        this.aiTimer = 0;
+        this.aiDecisionInterval = 3000 + Math.random() * 2000;
+
+        const ai = this.players[1];
+        if (!ai || ai.buildings.length === 0 && ai.units.length === 0) return;
+
+        // AI base center (approximate from first building or starting position)
+        const baseX = ai.buildings.length > 0 ? ai.buildings[0].tx : MAP_SIZE - 10;
+        const baseY = ai.buildings.length > 0 ? ai.buildings[0].ty : MAP_SIZE - 10;
+
+        // --- Economy: Build refineries (max 3) ---
+        const refineries = ai.buildings.filter(b => b.type === 'refinery');
+        if (refineries.length < 3 && ai.money >= BUILD_TYPES.refinery.cost) {
+            const pos = this._aiPickBuildPos(baseX, baseY, 'refinery');
+            if (pos) {
+                ai.money -= BUILD_TYPES.refinery.cost;
+                const b = this.createBuilding('refinery', pos.x, pos.y, 1);
+                b.built = false;
+                b.buildProgress = 0;
+                ai.buildings.push(b);
+            }
+        }
+
+        // --- Military: Build barracks (max 2) ---
+        const barracks = ai.buildings.filter(b => b.type === 'barracks');
+        if (barracks.length < 2 && ai.money >= BUILD_TYPES.barracks.cost) {
+            const pos = this._aiPickBuildPos(baseX, baseY, 'barracks');
+            if (pos) {
+                ai.money -= BUILD_TYPES.barracks.cost;
+                const b = this.createBuilding('barracks', pos.x, pos.y, 1);
+                b.built = false;
+                b.buildProgress = 0;
+                ai.buildings.push(b);
+            }
+        }
+
+        // --- Train soldiers ---
+        const builtBarracks = ai.buildings.filter(b => b.type === 'barracks' && b.built && !b.training && b.hp > 0);
+        for (const bb of builtBarracks) {
+            if (ai.money >= UNIT_TYPES.soldier.cost) {
+                ai.money -= UNIT_TYPES.soldier.cost;
+                bb.training = 'soldier';
+                bb.trainProgress = 0;
+            }
+        }
+
+        // --- Combat: Attack when enough soldiers ---
+        const idleSoldiers = ai.units.filter(u => u.state === 'idle' && u.hp > 0 && u.state !== 'dead');
+        const totalSoldiers = ai.units.filter(u => u.hp > 0 && u.state !== 'dead').length;
+        const attackThreshold = totalSoldiers >= 8 ? 4 : 5;
+
+        if (idleSoldiers.length >= attackThreshold) {
+            // Find player's nearest building or unit to attack
+            const playerData = this.players[0];
+            let target = null;
+
+            // Prefer buildings
+            if (playerData.buildings.length > 0) {
+                target = playerData.buildings[0];
+            } else if (playerData.units.length > 0) {
+                const alive = playerData.units.filter(u => u.state !== 'dead');
+                if (alive.length > 0) target = alive[0];
+            }
+
+            if (target) {
+                const tx = target.tx !== undefined ? target.tx + 1 : target.x;
+                const ty = target.ty !== undefined ? target.ty + 1 : target.y;
+
+                for (const soldier of idleSoldiers) {
+                    soldier.attackTarget = target;
+                    soldier.state = 'attacking';
+                    soldier.path = this.findPath(Math.floor(soldier.x), Math.floor(soldier.y), Math.floor(tx), Math.floor(ty));
+                    soldier.pathIdx = 0;
+                }
+            }
+        }
+    }
+
+    _aiPickBuildPos(baseX, baseY, type) {
+        const size = BUILD_TYPES[type].size;
+        // Try random positions near base
+        for (let attempt = 0; attempt < 20; attempt++) {
+            const ox = Math.floor(Math.random() * 10 - 3);
+            const oy = Math.floor(Math.random() * 10 - 3);
+            const tx = baseX + ox;
+            const ty = baseY + oy;
+
+            if (tx < 0 || ty < 0 || tx + size > MAP_SIZE || ty + size > MAP_SIZE) continue;
+
+            // Check terrain
+            let valid = true;
+            for (let dy = 0; dy < size; dy++) {
+                for (let dx = 0; dx < size; dx++) {
+                    const t = this.map[ty + dy]?.[tx + dx];
+                    if (!t || t.type === 'water') { valid = false; break; }
+                }
+                if (!valid) break;
+            }
+            if (!valid) continue;
+
+            // Check overlap with existing buildings
+            const allBuildings = this.players.flatMap(p => p.buildings);
+            let overlap = false;
+            for (const bp of allBuildings) {
+                if (tx < bp.tx + bp.size && tx + size > bp.tx &&
+                    ty < bp.ty + bp.size && ty + size > bp.ty) { overlap = true; break; }
+            }
+            if (overlap) continue;
+
+            return { x: tx, y: ty };
+        }
+        return null;
+    }
+
+    // ==================== VICTORY / DEFEAT ====================
+
+    checkVictoryConditions() {
+        if (this.gameOver) return;
+
+        for (let pi = 0; pi < this.players.length; pi++) {
+            const p = this.players[pi];
+            const alive = p.buildings.length > 0 || p.units.some(u => u.state !== 'dead');
+            if (!alive) {
+                this.gameOver = true;
+                if (pi === 0) {
+                    this.eva('DEFEAT! Your base has been destroyed.');
+                } else {
+                    this.eva('VICTORY! Enemy eliminated!');
+                }
+                return;
+            }
+        }
+    }
 
     // ==================== RENDER ====================
 
@@ -737,17 +987,40 @@ class GameState {
 
     _syncRenderer(dt) {
         // Sync buildings
-        for (const p of this.players) {
+        for (let pi = 0; pi < this.players.length; pi++) {
+            const p = this.players[pi];
             for (const b of p.buildings) {
-                this.renderer3d.addBuilding(b);
+                this.renderer3d.addBuilding(b, p.color);
                 this.renderer3d.updateBuilding(b);
+
+                // Fog of war: hide enemy buildings not in player's sight
+                if (pi !== this.currentPlayer) {
+                    const bx = Math.floor(b.tx + b.size / 2);
+                    const by = Math.floor(b.ty + b.size / 2);
+                    const visible = bx >= 0 && by >= 0 && bx < MAP_SIZE && by < MAP_SIZE && this.fog[by][bx] === 2;
+                    this.renderer3d.setBuildingVisible(b, visible);
+                }
             }
         }
 
         // Sync units
-        for (const p of this.players) {
+        for (let pi = 0; pi < this.players.length; pi++) {
+            const p = this.players[pi];
             for (const u of p.units) {
+                if (!this.renderer3d.unitMeshes.has(u)) {
+                    this.renderer3d.addUnit(u, p.color);
+                }
                 this.renderer3d.updateUnit(u, dt);
+
+                // Fog of war: hide enemy units not in player's sight
+                if (pi !== this.currentPlayer) {
+                    const ux = Math.floor(u.x);
+                    const uy = Math.floor(u.y);
+                    const visible = u.state !== 'dead' && ux >= 0 && uy >= 0 && ux < MAP_SIZE && uy < MAP_SIZE && this.fog[uy][ux] === 2;
+                    this.renderer3d.setUnitVisible(u, visible);
+                } else {
+                    this.renderer3d.setUnitVisible(u, true);
+                }
             }
         }
         this.renderer3d.cleanupDeadUnits(this.players);
@@ -777,14 +1050,14 @@ class GameState {
         this.renderer3d.updateFog(this.fog, MAP_SIZE);
 
         // Update selection
-        this.renderer3d.updateSelection(this.selected);
+        this.renderer3d.updateSelection(this.selected, this.players[this.currentPlayer].color);
 
-        // Health bars
+        // Health bars (only show visible entities)
         this.renderer3d.updateHealthBars(this.players);
 
         // Placement preview
         if (this.placingBuilding) {
-            this.renderer3d.showPlacementPreview(this.placingBuilding, this.hoverTile.x, this.hoverTile.y);
+            this.renderer3d.showPlacementPreview(this.placingBuilding, this.hoverTile.x, this.hoverTile.y, this.players[this.currentPlayer].color);
         } else {
             this.renderer3d.hidePlacementPreview();
         }
@@ -812,14 +1085,35 @@ class GameState {
             }
         }
 
-        for (const p of this.players) {
-            mctx.fillStyle = p.color;
-            for (const b of p.buildings) {
-                mctx.fillRect(b.tx * scale, b.ty * scale, b.size * scale, b.size * scale);
+        // Player buildings and units (always show own)
+        const ownP = this.players[this.currentPlayer];
+        mctx.fillStyle = ownP.color;
+        for (const b of ownP.buildings) {
+            mctx.fillRect(b.tx * scale, b.ty * scale, b.size * scale, b.size * scale);
+        }
+        for (const u of ownP.units) {
+            if (u.state === 'dead') continue;
+            mctx.fillRect(u.x * scale - 1, u.y * scale - 1, 2, 2);
+        }
+
+        // Enemy: only show in revealed fog
+        for (let pi = 0; pi < this.players.length; pi++) {
+            if (pi === this.currentPlayer) continue;
+            const ep = this.players[pi];
+            mctx.fillStyle = ep.color;
+            for (const b of ep.buildings) {
+                const bx = Math.floor(b.tx + b.size / 2);
+                const by = Math.floor(b.ty + b.size / 2);
+                if (bx >= 0 && by >= 0 && bx < MAP_SIZE && by < MAP_SIZE && this.fog[by][bx] === 2) {
+                    mctx.fillRect(b.tx * scale, b.ty * scale, b.size * scale, b.size * scale);
+                }
             }
-            for (const u of p.units) {
+            for (const u of ep.units) {
                 if (u.state === 'dead') continue;
-                mctx.fillRect(u.x * scale - 1, u.y * scale - 1, 2, 2);
+                const ux = Math.floor(u.x), uy = Math.floor(u.y);
+                if (ux >= 0 && uy >= 0 && ux < MAP_SIZE && uy < MAP_SIZE && this.fog[uy][ux] === 2) {
+                    mctx.fillRect(u.x * scale - 1, u.y * scale - 1, 2, 2);
+                }
             }
         }
 
@@ -828,7 +1122,6 @@ class GameState {
         mctx.lineWidth = 1;
         const vpW = this.renderer3d.frustumSize * (window.innerWidth / window.innerHeight);
         const vpH = this.renderer3d.frustumSize;
-        // Approximate: camera is looking at camTileX, camTileY
         const vpScale = scale;
         mctx.strokeRect(
             (this.camTileX - vpW / 2) * vpScale,
@@ -871,43 +1164,22 @@ class GameState {
         const div = document.createElement('div');
         div.className = 'build-item' + (p.money < cost ? ' disabled' : '');
 
-        // Simple colored icon instead of sprite
-        const iconCanvas = document.createElement('canvas');
-        iconCanvas.width = 40; iconCanvas.height = 40;
-        const ictx = iconCanvas.getContext('2d');
+        // Render 3D icon
+        const iconCanvas = this.renderer3d.renderBuildIcon(type, p.color, 48);
+        const iconImg = document.createElement('canvas');
+        iconImg.width = 48;
+        iconImg.height = 48;
+        const ictx = iconImg.getContext('2d');
+        // Dark background
         ictx.fillStyle = '#1a1a2e';
-        ictx.fillRect(0, 0, 40, 40);
+        ictx.fillRect(0, 0, 48, 48);
+        ictx.drawImage(iconCanvas, 0, 0, 48, 48);
+        // Border
+        ictx.strokeStyle = p.color;
+        ictx.lineWidth = 1;
+        ictx.strokeRect(0, 0, 48, 48);
 
-        if (type === 'refinery') {
-            ictx.fillStyle = '#888';
-            ictx.fillRect(5, 20, 30, 15);
-            ictx.fillStyle = '#999';
-            ictx.beginPath(); ictx.arc(15, 18, 8, 0, Math.PI * 2); ictx.fill();
-            ictx.beginPath(); ictx.arc(28, 20, 6, 0, Math.PI * 2); ictx.fill();
-            ictx.fillStyle = '#cc2222';
-            ictx.fillRect(8, 13, 14, 2);
-        } else if (type === 'barracks') {
-            ictx.fillStyle = '#4a5d3a';
-            ictx.fillRect(5, 15, 30, 20);
-            ictx.fillStyle = '#3a4d2a';
-            ictx.beginPath();
-            ictx.moveTo(5, 15); ictx.lineTo(20, 5); ictx.lineTo(35, 15);
-            ictx.fill();
-            ictx.fillStyle = '#cc2222';
-            ictx.fillRect(2, 6, 3, 12);
-        } else if (type === 'soldier') {
-            ictx.fillStyle = '#6b2222';
-            ictx.fillRect(15, 15, 10, 14);
-            ictx.fillStyle = '#d4a574';
-            ictx.beginPath(); ictx.arc(20, 12, 5, 0, Math.PI * 2); ictx.fill();
-            ictx.fillStyle = '#3a4a3a';
-            ictx.beginPath(); ictx.arc(20, 10, 5.5, Math.PI, 0); ictx.fill();
-            ictx.fillStyle = '#2a2a2a';
-            ictx.fillRect(14, 29, 5, 6);
-            ictx.fillRect(21, 29, 5, 6);
-        }
-
-        div.appendChild(iconCanvas);
+        div.appendChild(iconImg);
         div.innerHTML += `<div><div>${name}</div><div style="font-size:9px;color:#888">${desc}</div></div><div class="cost">$${cost}</div>`;
 
         div.addEventListener('click', () => {
