@@ -409,11 +409,13 @@ class GameState {
                 this.onMouseUp({ clientX: t.clientX, clientY: t.clientY, button: 0 });
 
             } else if (!touch.moved && touch.gesture !== 'pinch') {
-                // Tap — check for double-tap
-                if (now - touch.lastTapTime < 300) {
+                // Tap — check if placing building first
+                if (this.placingBuilding) {
+                    this.tryPlaceBuilding(t.clientX, t.clientY);
+                } else if (now - touch.lastTapTime < 300) {
                     // Double tap = attack command (right-click on enemy)
                     this.onRightClick({ clientX: t.clientX, clientY: t.clientY });
-                    touch.lastTapTime = 0; // reset so triple tap doesn't re-trigger
+                    touch.lastTapTime = 0;
                 } else {
                     // Single tap = select
                     const tile = this.renderer3d.screenToTile(t.clientX, t.clientY);
