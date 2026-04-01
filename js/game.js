@@ -823,7 +823,9 @@ class GameState {
                             const spawnY = b.ty + Math.floor(b.size / 2);
                             p.units.push(this.createUnit('soldier', spawnX, spawnY, b.owner));
                             if (b.owner === this.currentPlayer) {
-                                this.eva(`Unit ready.${b.trainQueue > 0 ? ` (${b.trainQueue} queued)` : ''}`);
+                                const qLeft = this._getTotalTrainQueue(p);
+                            this.eva(`Unit ready.${qLeft > 0 ? ` (${qLeft} queued)` : ''}`);
+                            this._updateQueueBadge();
                                 this.updateUI();
                             }
                         }
@@ -1612,7 +1614,24 @@ class GameState {
         ictx.strokeRect(0, 0, 48, 48);
 
         div.appendChild(iconImg);
-        div.innerHTML += `<div><div>${name}</div><div style="font-size:9px;color:#888">${desc}</div></div><div class="cost">$${cost}</div>`;
+
+        // Queue badge for units
+        let queueBadge = null;
+        if (isUnit) {
+            const totalQueued = this._getTotalTrainQueue(p);
+            const infoHtml = `<div><div>${name}</div><div style="font-size:9px;color:#888">${desc}</div></div>`;
+            const badgeHtml = `<div class="queue-badge" style="background:#e94560;color:#fff;font-size:10px;font-weight:bold;padding:1px 6px;border-radius:8px;margin-left:4px;min-width:20px;text-align:center;display:${totalQueued > 0 ? 'inline-block' : 'none'}">${totalQueued}</div>`;
+            const costHtml = `<div class="cost">$${cost}</div>`;
+            div.innerHTML += infoHtml + badgeHtml + costHtml;
+            queueBadge = div.querySelector('.queue-badge');
+        } else {
+            div.innerHTML += `<div><div>${name}</div><div style="font-size:9px;color:#888">${desc}</div></div><div class="cost">$${cost}</div>`;
+        }
+
+        // Store reference for live updates
+        if (isUnit && queueBadge) {
+            this._soldierQueueBadge = queueBadge;
+        }
 
         div.addEventListener('click', () => {
             if (p.money < cost) { this.eva('Insufficient funds.'); return; }
@@ -1633,8 +1652,9 @@ class GameState {
                     barracks.trainQueue++;
                 }
                 this.updateMoney();
-                const qTotal = (barracks.training ? 1 : 0) + barracks.trainQueue;
+                const qTotal = this._getTotalTrainQueue(p);
                 this.eva(`Training soldier... (${qTotal} in queue)`);
+                this._updateQueueBadge();
             } else {
                 this.placingBuilding = type;
                 this.eva(`Select location for ${name}.`);
@@ -1673,6 +1693,25 @@ class GameState {
             const soldiers = this.selected.filter(u => u.type === 'soldier');
             info.innerHTML = `<div style="color:#00ff88">${soldiers.length} Soldiers selected</div>
                 <div style="color:#666;font-size:9px">Right-click to move/attack</div>`;
+        }
+    }
+
+    _getTotalTrainQueue(player) {
+        let total = 0;
+        for (const b of player.buildings) {
+            if (b.type === 'barracks' && b.hp > 0) {
+                total += (b.training ? 1 : 0) + b.trainQueue;
+            }
+        }
+        return total;
+    }
+
+    _updateQueueBadge() {
+        if (this._soldierQueueBadge) {
+            const p = this.players[this.currentPlayer];
+            const total = this._getTotalTrainQueue(p);
+            this._soldierQueueBadge.textContent = total;
+            this._soldierQueueBadge.style.display = total > 0 ? 'inline-block' : 'none';
         }
     }
 
