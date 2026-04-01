@@ -668,13 +668,13 @@ class GameState {
     findPath(sx, sy, ex, ey) {
         if (sx === ex && sy === ey) return [{ x: ex, y: ey }];
         const open = [{ x: sx, y: sy, g: 0, h: 0, f: 0, parent: null }];
-        const closed = new Set();
+        const closedSet = new Set();
+        const closedNodes = new Map(); // key → node (for path reconstruction)
         const key = (x, y) => `${x},${y}`;
 
         const isWalkable = (x, y) => {
             if (x < 0 || y < 0 || x >= MAP_SIZE || y >= MAP_SIZE) return false;
             if (this.map[y][x].type === 'water') return false;
-            // Check building occupancy
             for (const p of this.players) {
                 for (const b of p.buildings) {
                     if (x >= b.tx && x < b.tx + b.size && y >= b.ty && y < b.ty + b.size) return false;
@@ -683,20 +683,35 @@ class GameState {
             return true;
         };
 
+        const reconstructPath = (node) => {
+            const path = [];
+            let n = node;
+            while (n) { path.unshift({ x: n.x, y: n.y }); n = n.parent; }
+            return path;
+        };
+
         let iterations = 0;
+        let bestClosedNode = null, bestClosedDist = Infinity;
+
         while (open.length > 0 && iterations < 2000) {
             iterations++;
             open.sort((a, b) => a.f - b.f);
             const curr = open.shift();
 
             if (curr.x === ex && curr.y === ey) {
-                const path = [];
-                let n = curr;
-                while (n) { path.unshift({ x: n.x, y: n.y }); n = n.parent; }
-                return path;
+                return reconstructPath(curr);
             }
 
-            closed.add(key(curr.x, curr.y));
+            const k = key(curr.x, curr.y);
+            closedSet.add(k);
+            closedNodes.set(k, curr);
+
+            // Track closest explored node to target
+            const distToTarget = Math.hypot(curr.x - ex, curr.y - ey);
+            if (distToTarget < bestClosedDist) {
+                bestClosedDist = distToTarget;
+                bestClosedNode = curr;
+            }
 
             const neighbors = [
                 { x: curr.x + 1, y: curr.y }, { x: curr.x - 1, y: curr.y },
@@ -706,7 +721,7 @@ class GameState {
             ];
 
             for (const nb of neighbors) {
-                if (!isWalkable(nb.x, nb.y) || closed.has(key(nb.x, nb.y))) continue;
+                if (!isWalkable(nb.x, nb.y) || closedSet.has(key(nb.x, nb.y))) continue;
                 const g = curr.g + (nb.x !== curr.x && nb.y !== curr.y ? 1.41 : 1);
                 const h = Math.hypot(nb.x - ex, nb.y - ey);
                 const existing = open.find(n => n.x === nb.x && n.y === nb.y);
@@ -717,21 +732,9 @@ class GameState {
                 }
             }
         }
-        // No path found — do NOT walk through obstacles
-        // Find closest explored tile to destination instead
-        if (closed.size > 0) {
-            let bestKey = null, bestDist = Infinity;
-            for (const k of closed) {
-                const [cx, cy] = k.split(',').map(Number);
-                const d = Math.hypot(cx - ex, cy - ey);
-                if (d < bestDist) { bestDist = d; bestKey = k; }
-            }
-            if (bestKey) {
-                const [bx, by] = bestKey.split(',').map(Number);
-                if (bx !== sx || by !== sy) {
-                    return [{ x: bx, y: by }];
-                }
-            }
+        // No complete path — walk to closest reachable tile (with proper path reconstruction)
+        if (bestClosedNode && (bestClosedNode.x !== sx || bestClosedNode.y !== sy)) {
+            return reconstructPath(bestClosedNode);
         }
         return [];
     }
