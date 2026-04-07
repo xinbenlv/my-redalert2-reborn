@@ -1,0 +1,16 @@
+{
+  "name": "my-redalert2-reborn",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "test:e2e": "npx playwright test",
+    "demo:gif": "npx tsx e2e/generate-gifs.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "gif-encoder-2": "^1.0.5",
+    "pngjs": "^7.0.0",
+    "tsx": "^4.7.0"
+  }
+}

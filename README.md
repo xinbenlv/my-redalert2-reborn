@@ -4,6 +4,10 @@ A browser-based RTS game inspired by Command & Conquer: Red Alert 2, built entir
 
 **[Play Now](https://my-redalert2-reborn.vercel.app)**
 
+## Demo
+
+![Gameplay Demo](docs/demo-gifs/gameplay.gif)
+
 ## Gameplay
 
 ![Gameplay Demo](screenshots/gameplay.gif)
