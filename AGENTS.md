@@ -61,10 +61,12 @@ vercel.json         — Vercel deploy config
 ## Development Rules
 
 1. **Version display**: Bottom-left corner shows `vX.Y.Z (hash)` — always visible
-2. **Build script**: Run `bash build.sh` before deploy to inject git hash
-3. **Static only**: No npm build step, no bundler — all files served as-is
-4. **Mobile support**: Touch controls (tap=select, long-press=command, pinch=zoom, two-finger=pan)
-5. **Sidebar**: Collapsible on mobile, compact card-style build items
+2. **Hash is mandatory**: `build.sh` must fail if neither `SOURCE_GIT_SHA` nor `VERCEL_GIT_COMMIT_SHA` is present. Never fall back to `dev`.
+3. **Production deploy policy**: Prefer Git-integrated deploys via `git push origin main` so Vercel injects `VERCEL_GIT_COMMIT_SHA`.
+4. **Manual CLI deploy policy**: If using `vercel --prod`, pass `SOURCE_GIT_SHA=$(git rev-parse HEAD)` explicitly (or use `npm run deploy:vercel:prod`).
+5. **Static only**: No npm build step, no bundler — all files served as-is
+6. **Mobile support**: Touch controls (tap=select, long-press=command, pinch=zoom, two-finger=pan)
+7. **Sidebar**: Collapsible on mobile, compact card-style build items
 
 ## Coding Conventions
 - All game logic in `game.js`, all 3D rendering in `renderer3d.js`, all models in `models.js`
@@ -78,9 +80,9 @@ vercel.json         — Vercel deploy config
 # Local dev
 node server.js  # → http://localhost:3003
 
-# Deploy to Vercel
-bash build.sh && npx vercel --prod --yes
-
-# Or just push to main (Vercel auto-deploys via GitHub integration)
+# Preferred production deploy: Git integration (guaranteed commit SHA)
 git push origin main
+
+# Manual Vercel deploy: always pass the current SHA explicitly
+npm run deploy:vercel:prod
 ```

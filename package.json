@@ -4,8 +4,11 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
+    "build:version": "bash build.sh",
     "test:e2e": "npx playwright test",
-    "demo:gif": "npx tsx e2e/generate-gifs.ts"
+    "demo:gif": "npx tsx e2e/generate-gifs.ts",
+    "deploy:vercel": "SOURCE_GIT_SHA=$(git rev-parse HEAD) npx vercel --yes --build-env SOURCE_GIT_SHA=$(git rev-parse HEAD)",
+    "deploy:vercel:prod": "SOURCE_GIT_SHA=$(git rev-parse HEAD) npx vercel --prod --yes --build-env SOURCE_GIT_SHA=$(git rev-parse HEAD)"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

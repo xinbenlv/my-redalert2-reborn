@@ -65,10 +65,23 @@ node server.js
 
 ## Deploy
 
+### Production (preferred)
+
+Use Git integration so Vercel always knows the exact commit SHA:
+
 ```bash
-bash build.sh
-npx vercel --prod --yes
+git push origin main
 ```
+
+### Manual Vercel deploy
+
+When deploying from the CLI, always pass the current commit SHA explicitly:
+
+```bash
+npm run deploy:vercel:prod
+```
+
+`build.sh` now fails hard if neither `SOURCE_GIT_SHA` nor `VERCEL_GIT_COMMIT_SHA` is present. That is intentional: shipping `dev` as the version hash is a broken build, not an acceptable fallback.
 
 ## License
 
