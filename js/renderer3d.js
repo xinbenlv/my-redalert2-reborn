@@ -222,11 +222,10 @@ class Renderer3D {
         if (this.buildingMeshes.has(building)) return;
 
         let mesh;
-        if (building.type === 'refinery') {
-            mesh = this.models.createRefinery(factionColor);
-        } else if (building.type === 'barracks') {
-            mesh = this.models.createBarracks(factionColor);
-        }
+        if (building.type === 'refinery') mesh = this.models.createRefinery(factionColor);
+        else if (building.type === 'barracks') mesh = this.models.createBarracks(factionColor);
+        else if (building.type === 'powerPlant') mesh = this.models.createPowerPlant(factionColor);
+        else if (building.type === 'warFactory') mesh = this.models.createWarFactory(factionColor);
 
         if (!mesh) return;
 
@@ -268,9 +267,9 @@ class Renderer3D {
         if (this.unitMeshes.has(unit)) return;
 
         let mesh;
-        if (unit.type === 'soldier') {
-            mesh = this.models.createSoldier(factionColor);
-        }
+        if (unit.type === 'soldier') mesh = this.models.createSoldier(factionColor);
+        else if (unit.type === 'harvester') mesh = this.models.createHarvester(factionColor);
+        else if (unit.type === 'tank') mesh = this.models.createTank(factionColor);
         if (!mesh) return;
 
         mesh.position.set(
@@ -319,18 +318,35 @@ class Renderer3D {
                 }
             });
             this.models.flashMuzzle(mesh, false);
-        } else if (unit.state === 'moving') {
-            unit._walkPhase = (unit._walkPhase || 0) + dt * 0.008;
-            this.models.animateSoldierWalk(mesh, unit._walkPhase);
-            this.models.flashMuzzle(mesh, false);
-        } else if (unit.state === 'attacking') {
-            this.models.animateSoldierAttack(mesh);
-            // Flash muzzle briefly when firing
-            const flashing = unit.fireTimer > unit.fireRate - 100;
+        } else if (unit.type === 'soldier') {
+            mesh.rotation.x = 0;
+            if (unit.state === 'moving') {
+                unit._walkPhase = (unit._walkPhase || 0) + dt * 0.008;
+                this.models.animateSoldierWalk(mesh, unit._walkPhase);
+                this.models.flashMuzzle(mesh, false);
+            } else if (unit.state === 'attacking' || unit.state === 'engaging') {
+                this.models.animateSoldierAttack(mesh);
+                const flashing = unit.fireTimer > unit.fireRate - 100;
+                this.models.flashMuzzle(mesh, flashing);
+            } else {
+                this.models.animateSoldierIdle(mesh);
+                this.models.flashMuzzle(mesh, false);
+            }
+        } else if (unit.type === 'tank') {
+            mesh.rotation.x = 0;
+            const flashing = unit.fireRate > 0 && unit.fireTimer > unit.fireRate - 120;
             this.models.flashMuzzle(mesh, flashing);
-        } else {
-            this.models.animateSoldierIdle(mesh);
+            if (mesh.userData.turret) {
+                mesh.userData.turret.rotation.y = Math.sin(this.time * 0.8 + unit.x) * 0.02;
+            }
+        } else if (unit.type === 'harvester') {
+            mesh.rotation.x = 0;
             this.models.flashMuzzle(mesh, false);
+            if (mesh.userData.cargoPod && unit.cargoCapacity) {
+                const fill = Math.max(0.35, 0.35 + (unit.cargo || 0) / unit.cargoCapacity * 0.65);
+                mesh.userData.cargoPod.scale.y = fill;
+                mesh.userData.cargoPod.position.y = 0.21 + fill * 0.13;
+            }
         }
     }
 
@@ -454,11 +470,10 @@ class Renderer3D {
 
     showPlacementPreview(type, tx, ty, factionColor) {
         if (!this._placementPreview) {
-            if (type === 'refinery') {
-                this._placementPreview = this.models.createRefinery(factionColor);
-            } else {
-                this._placementPreview = this.models.createBarracks(factionColor);
-            }
+            if (type === 'refinery') this._placementPreview = this.models.createRefinery(factionColor);
+            else if (type === 'barracks') this._placementPreview = this.models.createBarracks(factionColor);
+            else if (type === 'powerPlant') this._placementPreview = this.models.createPowerPlant(factionColor);
+            else if (type === 'warFactory') this._placementPreview = this.models.createWarFactory(factionColor);
             this._placementPreview.traverse(child => {
                 if (child.material) {
                     child.material = child.material.clone();
@@ -598,13 +613,19 @@ class Renderer3D {
 
         // Create model
         let model;
-        if (type === 'refinery') {
-            model = this.models.createRefinery(factionColor);
-        } else if (type === 'barracks') {
-            model = this.models.createBarracks(factionColor);
-        } else if (type === 'soldier') {
+        if (type === 'refinery') model = this.models.createRefinery(factionColor);
+        else if (type === 'barracks') model = this.models.createBarracks(factionColor);
+        else if (type === 'powerPlant') model = this.models.createPowerPlant(factionColor);
+        else if (type === 'warFactory') model = this.models.createWarFactory(factionColor);
+        else if (type === 'soldier') {
             model = this.models.createSoldier(factionColor);
-            model.scale.setScalar(4); // scale up soldier to fill icon
+            model.scale.setScalar(4);
+        } else if (type === 'harvester') {
+            model = this.models.createHarvester(factionColor);
+            model.scale.setScalar(2.5);
+        } else if (type === 'tank') {
+            model = this.models.createTank(factionColor);
+            model.scale.setScalar(2.3);
         }
 
         if (model) {

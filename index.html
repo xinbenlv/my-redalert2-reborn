@@ -9,9 +9,9 @@
 <body>
     <div id="ui-overlay">
         <div id="top-bar">
-            <div id="money-display">💰 <span id="money">5000</span></div>
+            <div id="money-display">CREDITS <span id="money">5000</span></div>
             <div id="game-title">RED ALERT 2: REBORN</div>
-            <div id="power-display">⚡ POWER OK</div>
+            <div id="power-display">POWER STANDBY</div>
         </div>
         <button id="sidebar-toggle" aria-label="Toggle sidebar">☰</button>
         <div id="sidebar">
@@ -20,8 +20,8 @@
             </div>
             <div id="build-panel">
                 <div class="build-tabs">
-                    <div class="build-tab active" data-tab="buildings" title="Construct">🏗️</div>
-                    <div class="build-tab" data-tab="units" title="Train">🎖️</div>
+                    <div class="build-tab active" data-tab="buildings" title="Construct">BUILD</div>
+                    <div class="build-tab" data-tab="units" title="Train">TRAIN</div>
                 </div>
                 <div id="build-items"></div>
             </div>
@@ -32,8 +32,11 @@
     <div id="version-info"></div>
     <script src="js/version.js"></script>
     <script src="js/three.min.js"></script>
+    <script src="js/data/buildings.js"></script>
+    <script src="js/data/units.js"></script>
     <script src="js/models.js"></script>
     <script src="js/renderer3d.js"></script>
+    <script src="js/systems/power.js"></script>
     <script src="js/game.js"></script>
 </body>
 </html>

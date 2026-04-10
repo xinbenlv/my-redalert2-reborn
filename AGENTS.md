@@ -16,9 +16,12 @@ index.html          — HTML shell + UI overlay (top bar, sidebar, minimap, EVA)
 css/style.css       — All styling (sidebar, build cards, mobile responsive)
 js/three.min.js     — Three.js r162 (bundled locally)
 js/version.js       — Auto-generated: window.__VERSION__, __GIT_HASH__, __BUILD_DATE__
-js/models.js        — Procedural 3D model factory (refinery, barracks, soldier)
+js/data/buildings.js — Building definitions, costs, prerequisites, power metadata
+js/data/units.js    — Unit definitions, roles, train times, economy/combat stats
+js/models.js        — Procedural 3D model factory (power plant, refinery, barracks, war factory, soldier, harvester, tank)
 js/renderer3d.js    — Three.js scene, camera, lights, shadows, fog, coordinate conversion
-js/game.js          — Game state, input, pathfinding (A*), AI, combat, UI updates
+js/systems/power.js — Power calculation helpers and low-power state
+js/game.js          — Game state, input, pathfinding (A*), AI, combat, economy, UI updates
 server.js           — Simple static file server (port 3003, dev only)
 build.sh            — Version injection script (used by Vercel build)
 vercel.json         — Vercel deploy config
@@ -30,14 +33,18 @@ vercel.json         — Vercel deploy config
 
 | Building | Cost | Build Time | HP | Income | Notes |
 |----------|------|------------|-----|--------|-------|
-| Refinery | $1,500 | 8s | 800 | $50/2s ($1,500/min) | Each refinery earns independently |
-| Barracks | $600 | 5s | 500 | — | Trains soldiers, queue max 30 per barracks |
+| Power Plant | $800 | 6s | 600 | +100 power | Required to keep the base online |
+| Refinery | $1,500 | 8s | 800 | Accepts ore from harvesters | Core economy building |
+| Barracks | $600 | 5s | 500 | -25 power | Trains soldiers |
+| War Factory | $2,000 | 11s | 1000 | -45 power | Produces harvesters and tanks |
 
 ### Units
 
 | Unit | Cost | Train Time | HP | Damage | Range | Fire Rate | Speed | Sight |
 |------|------|------------|-----|--------|-------|-----------|-------|-------|
 | Soldier | $200 | 3s | 50 | 8 | 4 tiles | 800ms | 1.2 | 6 tiles |
+| Harvester | $1,400 | 9s | 260 | — | — | — | 0.72 | 6 tiles |
+| Rhino Tank | $900 | 7s | 180 | 34 | 5 tiles | 1450ms | 0.92 | 7 tiles |
 
 ### Combat Mechanics
 - **Splash damage**: 1.2 tile radius, 50% damage to non-primary targets
