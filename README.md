@@ -17,12 +17,14 @@ A browser-based RTS game inspired by Command & Conquer: Red Alert 2, built entir
 ## Features
 
 - **Three.js WebGL** rendering with isometric orthographic camera
-- **Procedural 3D models**: Soviet refinery (storage tanks, pipes, chimney), barracks (guard tower, sandbags, flag), soldiers (humanoid with rifle)
-- **Real-time combat**: A* pathfinding, splash damage, auto-engage, retaliation
-- **AI opponent**: Builds base, trains soldiers, launches coordinated attacks
+- **Procedural 3D models**: power plant, refinery, barracks, war factory, soldier, harvester, tank
+- **Real-time combat**: A* pathfinding, splash damage, auto-engage, retaliation, infantry + vehicle mix
+- **AI opponent**: Builds base, expands power, trains harvesters/soldiers/tanks, launches attacks
 - **Fog of war**: Hidden / explored / visible terrain states
+- **Economy loop**: harvesters mine ore, return to refineries, and turn cargo into credits
+- **Power system**: live power production/drain, low-power slowdown, radar offline warning
 - **Mobile support**: Touch controls (tap, long-press, pinch zoom, two-finger pan), collapsible sidebar
-- **Build system**: Refinery (auto-income), barracks (training queue up to 30)
+- **Build system**: prerequisites, building/unit production queues, war factory vehicle tech
 
 ## Controls
 

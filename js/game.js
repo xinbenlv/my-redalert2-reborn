@@ -7,13 +7,9 @@
 // ==================== CONSTANTS ====================
 const TILE_W = 64, TILE_H = 32; // kept for minimap compatibility
 const MAP_SIZE = 40;
-const BUILD_TYPES = {
-    refinery: { cost: 1500, buildTime: 8000, hp: 800, sight: 5, size: 2, incomeRate: 50, incomeInterval: 2000 },
-    barracks: { cost: 600, buildTime: 5000, hp: 500, sight: 4, size: 2, trainCost: 200, trainTime: 3000 }
-};
-const UNIT_TYPES = {
-    soldier: { cost: 200, hp: 50, speed: 1.2, damage: 8, range: 4, fireRate: 800, sight: 6 }
-};
+const BUILD_TYPES = window.BUILD_TYPES;
+const UNIT_TYPES = window.UNIT_TYPES;
+const POWER_SYSTEM = window.POWER_SYSTEM;
 
 // ==================== GAME STATE ====================
 class GameState {
@@ -54,8 +50,8 @@ class GameState {
 
         // Players: Human (Red) vs AI (Blue)
         this.players = [
-            { faction: 'soviet', money: 5000, buildings: [], units: [], color: '#cc2222', isAI: false },
-            { faction: 'soviet', money: 5000, buildings: [], units: [], color: '#2266cc', isAI: true }
+            { faction: 'soviet', money: 6500, buildings: [], units: [], color: '#cc2222', isAI: false, lowPowerNotified: false },
+            { faction: 'soviet', money: 6500, buildings: [], units: [], color: '#2266cc', isAI: true, lowPowerNotified: false }
         ];
         this.currentPlayer = 0;
 
@@ -183,7 +179,12 @@ class GameState {
                     if (oreDist1 < 3 || oreDist2 < 3 || oreDist3 < 3) type = 'ore';
                 }
 
-                this.map[y][x] = { type, variant: (x * 7 + y * 13) % 5 };
+                this.map[y][x] = {
+                    type,
+                    variant: (x * 7 + y * 13) % 5,
+                    oreAmount: type === 'ore' ? 5000 : 0,
+                    maxOreAmount: type === 'ore' ? 5000 : 0
+                };
                 this.fog[y][x] = 0;
             }
         }
@@ -191,8 +192,10 @@ class GameState {
 
     spawnBase(playerIdx, bx, by) {
         const p = this.players[playerIdx];
+        p.buildings.push(this.createBuilding('powerPlant', bx, by + 3, playerIdx));
         p.buildings.push(this.createBuilding('refinery', bx, by, playerIdx));
         p.buildings.push(this.createBuilding('barracks', bx + 3, by, playerIdx));
+        p.units.push(this.createUnit('harvester', bx + 1, by + 4, playerIdx));
         for (let i = 0; i < 3; i++) {
             p.units.push(this.createUnit('soldier', bx + i, by + 3, playerIdx));
         }
@@ -205,8 +208,9 @@ class GameState {
             hp: def.hp, maxHp: def.hp,
             built: true, buildProgress: 1,
             sight: def.sight, size: def.size,
-            incomeTimer: 0,
-            training: null, trainProgress: 0, trainQueue: 0
+            training: null, trainProgress: 0, trainQueue: [],
+            rallyPoint: { x: tx + def.size + 1, y: ty + Math.floor(def.size / 2) },
+            oreStored: 0
         };
     }
 
@@ -221,6 +225,18 @@ class GameState {
             range: def.range,
             fireRate: def.fireRate,
             sight: def.sight,
+            role: def.role,
+            armorType: def.armorType,
+            projectileSpeed: def.projectileSpeed || 8,
+            cargo: 0,
+            cargoCapacity: def.cargoCapacity || 0,
+            harvestRate: def.harvestRate || 0,
+            harvestInterval: def.harvestInterval || 0,
+            unloadRate: def.unloadRate || 0,
+            unloadInterval: def.unloadInterval || 0,
+            harvestTimer: 0,
+            unloadTimer: 0,
+            oreTarget: null,
             dir: 4, frame: 0, walkTimer: 0,
             target: null,
             attackTarget: null,
@@ -553,7 +569,7 @@ class GameState {
         const enemyUnit = this._findEnemyUnitAt(tile.x, tile.y);
         if (enemyUnit) {
             for (const u of this.selected) {
-                if (u.type !== 'soldier') continue;
+                if (!this.canUnitReceiveCommand(u)) continue;
                 u.attackTarget = enemyUnit;
                 u.target = null;
                 u.state = 'attacking';
@@ -568,7 +584,7 @@ class GameState {
         const enemyBuilding = this._findEnemyBuildingAt(tile.x, tile.y);
         if (enemyBuilding) {
             for (const u of this.selected) {
-                if (u.type !== 'soldier') continue;
+                if (!this.canUnitReceiveCommand(u)) continue;
                 u.attackTarget = enemyBuilding;
                 u.target = null;
                 u.state = 'attacking';
@@ -580,9 +596,8 @@ class GameState {
         }
 
         // Move command
-        let movedCount = 0;
         for (const u of this.selected) {
-            if (u.type !== 'soldier') continue;
+            if (!this.canUnitReceiveCommand(u)) continue;
             u.target = { x: tile.x, y: tile.y };
             u.attackTarget = null;
             u._savedTarget = null;
@@ -596,7 +611,6 @@ class GameState {
             } else {
                 u.pathIdx = 0;
             }
-            movedCount++;
         }
         this.commandPings.push({ tx: tile.x, ty: tile.y, color: '#00ff88', time: 0 });
     }
@@ -612,7 +626,7 @@ class GameState {
 
         canvas.style.cursor = '';
 
-        if (this.selected.length > 0 && this.selected.some(s => s.type === 'soldier')) {
+        if (this.selected.length > 0 && this.selected.some(s => this.canUnitReceiveCommand(s))) {
             const enemy = this._findEnemyUnitAt(tile.x, tile.y) || this._findEnemyBuildingAt(tile.x, tile.y);
             if (enemy) {
                 canvas.classList.add('cursor-attack');
@@ -669,14 +683,236 @@ class GameState {
             return;
         }
 
+        if (this.getMissingPrerequisites(p, def.prerequisites || []).length > 0) {
+            this.eva(`Prerequisite missing: ${this.getMissingPrerequisites(p, def.prerequisites || []).join(', ')}`);
+            return;
+        }
+
         p.money -= def.cost;
         const b = this.createBuilding(type, tile.x, tile.y, this.currentPlayer);
         b.built = false;
         b.buildProgress = 0;
         p.buildings.push(b);
         this.placingBuilding = null;
-        this.eva(`${type === 'refinery' ? 'Refinery' : 'Barracks'} under construction.`);
+        this.eva(`${def.name} under construction.`);
         this.updateMoney();
+    }
+
+
+    getDisplayName(type) {
+        return BUILD_TYPES[type]?.name || UNIT_TYPES[type]?.name || type;
+    }
+
+    getMissingPrerequisites(player, prerequisites) {
+        const owned = new Set(player.buildings.filter(b => b.hp > 0 && b.built).map(b => b.type));
+        return (prerequisites || []).filter(req => !owned.has(req)).map(req => BUILD_TYPES[req]?.name || req);
+    }
+
+    canUnitReceiveCommand(unit) {
+        return unit && unit.state !== 'dead' && unit.role !== 'harvester';
+    }
+
+    isCombatUnit(unit) {
+        return unit && unit.state !== 'dead' && unit.damage > 0;
+    }
+
+    getProductionBuildings(player, unitType) {
+        const producer = UNIT_TYPES[unitType]?.producedBy;
+        return player.buildings.filter(b => b.type === producer && b.built && b.hp > 0);
+    }
+
+    getQueueLength(building) {
+        return (building.training ? 1 : 0) + (building.trainQueue?.length || 0);
+    }
+
+    spawnProducedUnit(player, building, unitType) {
+        const exit = building.rallyPoint || { x: building.tx + building.size + 1, y: building.ty + Math.floor(building.size / 2) };
+        const unit = this.createUnit(unitType, exit.x, exit.y, building.owner);
+        player.units.push(unit);
+        if (unit.role === 'harvester') this.assignHarvesterJob(unit, player);
+    }
+
+    issueMoveOrder(unit, tx, ty, state = 'moving') {
+        unit.target = { x: tx, y: ty };
+        unit.attackTarget = null;
+        unit.state = state;
+        unit.path = this.findPath(Math.round(unit.x), Math.round(unit.y), Math.floor(tx), Math.floor(ty));
+        unit.pathIdx = unit.path && unit.path.length > 1 && Math.hypot(unit.path[0].x - unit.x, unit.path[0].y - unit.y) < 0.5 ? 1 : 0;
+    }
+
+    moveUnitAlongPath(unit, dt) {
+        let targetX, targetY;
+        if (unit.path && unit.pathIdx < unit.path.length) {
+            const waypoint = unit.path[unit.pathIdx];
+            targetX = waypoint.x;
+            targetY = waypoint.y;
+        } else if (unit.target) {
+            targetX = unit.target.x;
+            targetY = unit.target.y;
+        } else {
+            unit.state = 'idle';
+            return true;
+        }
+
+        const dx = targetX - unit.x;
+        const dy = targetY - unit.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 0.2) {
+            if (unit.path && unit.pathIdx < unit.path.length - 1) unit.pathIdx++;
+            else {
+                unit.state = 'idle';
+                unit.target = null;
+                unit.path = null;
+                return true;
+            }
+        } else if (dist > 0.1) {
+            const speed = unit.speed * dt / 1000;
+            unit.x += (dx / dist) * Math.min(speed, dist);
+            unit.y += (dy / dist) * Math.min(speed, dist);
+            this.faceToward(unit, targetX, targetY);
+        }
+        return false;
+    }
+
+    findNearestRefinery(player, unit) {
+        let best = null;
+        let bestDist = Infinity;
+        for (const building of player.buildings) {
+            if (building.type !== 'refinery' || building.hp <= 0 || !building.built) continue;
+            const cx = building.tx + building.size / 2 - 0.5;
+            const cy = building.ty + building.size / 2 - 0.5;
+            const dist = Math.hypot(unit.x - cx, unit.y - cy);
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = building;
+            }
+        }
+        return best;
+    }
+
+    findNearestOreTile(unit) {
+        let best = null;
+        let bestDist = Infinity;
+        for (let y = 0; y < MAP_SIZE; y++) {
+            for (let x = 0; x < MAP_SIZE; x++) {
+                const tile = this.map[y][x];
+                if (tile.type !== 'ore' || tile.oreAmount <= 0) continue;
+                const dist = Math.hypot(unit.x - x, unit.y - y);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    best = { x, y, tile };
+                }
+            }
+        }
+        return best;
+    }
+
+    assignHarvesterJob(unit, player) {
+        const refinery = this.findNearestRefinery(player, unit);
+        if (!refinery) {
+            unit.state = 'idle';
+            unit.target = null;
+            return;
+        }
+        if (unit.cargo >= unit.cargoCapacity) {
+            const tx = refinery.tx + refinery.size / 2 - 0.5;
+            const ty = refinery.ty + refinery.size / 2 - 0.5;
+            unit.returnRefinery = refinery;
+            this.issueMoveOrder(unit, tx, ty, 'movingToRefinery');
+            return;
+        }
+        const ore = this.findNearestOreTile(unit);
+        if (!ore) {
+            unit.state = 'idle';
+            unit.target = null;
+            return;
+        }
+        unit.oreTarget = ore;
+        this.issueMoveOrder(unit, ore.x, ore.y, 'movingToOre');
+    }
+
+    updateHarvesterUnit(unit, player, dt) {
+        if (unit.state === 'dead') {
+            unit.deadTimer += dt;
+            return;
+        }
+
+        if (!unit.target && !unit.oreTarget && unit.cargo === 0 && unit.state === 'idle') {
+            this.assignHarvesterJob(unit, player);
+        }
+
+        if (unit.state === 'movingToOre' || unit.state === 'movingToRefinery') {
+            const finished = this.moveUnitAlongPath(unit, dt);
+            if (!finished) return;
+        }
+
+        if (unit.cargo >= unit.cargoCapacity) {
+            const refinery = unit.returnRefinery || this.findNearestRefinery(player, unit);
+            if (!refinery) return;
+            const tx = refinery.tx + refinery.size / 2 - 0.5;
+            const ty = refinery.ty + refinery.size / 2 - 0.5;
+            const dist = Math.hypot(unit.x - tx, unit.y - ty);
+            if (dist > 1.75) {
+                unit.returnRefinery = refinery;
+                this.issueMoveOrder(unit, tx, ty, 'movingToRefinery');
+                return;
+            }
+            unit.state = 'unloading';
+            unit.unloadTimer += dt;
+            if (unit.unloadTimer >= unit.unloadInterval) {
+                unit.unloadTimer = 0;
+                const amount = Math.min(unit.unloadRate, unit.cargo);
+                unit.cargo -= amount;
+                player.money += amount;
+            }
+            if (unit.cargo <= 0) {
+                unit.cargo = 0;
+                unit.returnRefinery = null;
+                this.assignHarvesterJob(unit, player);
+            }
+            return;
+        }
+
+        const ore = unit.oreTarget && unit.oreTarget.tile?.oreAmount > 0 ? unit.oreTarget : this.findNearestOreTile(unit);
+        if (!ore) {
+            unit.state = 'idle';
+            return;
+        }
+        unit.oreTarget = ore;
+        const dist = Math.hypot(unit.x - ore.x, unit.y - ore.y);
+        if (dist > 0.65) {
+            this.issueMoveOrder(unit, ore.x, ore.y, 'movingToOre');
+            return;
+        }
+
+        unit.state = 'harvesting';
+        unit.harvestTimer += dt;
+        if (unit.harvestTimer >= unit.harvestInterval) {
+            unit.harvestTimer = 0;
+            const mined = Math.min(unit.harvestRate, ore.tile.oreAmount, unit.cargoCapacity - unit.cargo);
+            ore.tile.oreAmount -= mined;
+            unit.cargo += mined;
+            if (ore.tile.oreAmount <= 0 || unit.cargo >= unit.cargoCapacity) {
+                if (ore.tile.oreAmount <= 0) ore.tile.type = 'grass';
+                this.assignHarvesterJob(unit, player);
+            }
+        }
+    }
+
+    updatePowerState(player) {
+        if (!player) return;
+        const status = POWER_SYSTEM.getStatusLabel(player);
+        const display = document.getElementById('power-display');
+        if (!display) return;
+        display.textContent = status.text;
+        display.classList.toggle('low-power', status.lowPower);
+        if (player === this.players[this.currentPlayer]) {
+            if (status.lowPower && !player.lowPowerNotified) {
+                this.eva('Warning: low power.');
+                player.lowPowerNotified = true;
+            }
+            if (!status.lowPower) player.lowPowerNotified = false;
+        }
     }
 
     // ==================== PATHFINDING (Simple A*) ====================
@@ -766,6 +1002,7 @@ class GameState {
         this.updateProjectiles(dt);
         this.updateEffects(dt);
         this.updateFog();
+        this.updatePowerState(this.players[this.currentPlayer]);
         this.updateAI(dt);
         this.checkVictoryConditions();
     }
@@ -785,47 +1022,38 @@ class GameState {
 
     updateBuildings(dt) {
         for (const p of this.players) {
+            const buildSpeed = POWER_SYSTEM.getBuildSpeedMultiplier(p);
             for (const b of p.buildings) {
                 if (!b.built) {
-                    b.buildProgress += dt / BUILD_TYPES[b.type].buildTime;
+                    b.buildProgress += (dt / BUILD_TYPES[b.type].buildTime) * buildSpeed;
                     if (b.buildProgress >= 1) {
                         b.buildProgress = 1;
                         b.built = true;
                         if (b.owner === this.currentPlayer) {
                             this.eva('Construction complete.');
+                            this.updateUI();
                         }
                     }
                 }
 
-                if (b.type === 'refinery' && b.built && b.hp > 0) {
-                    b.incomeTimer += dt;
-                    if (b.incomeTimer >= BUILD_TYPES.refinery.incomeInterval) {
-                        b.incomeTimer = 0;
-                        p.money += BUILD_TYPES.refinery.incomeRate;
-                        if (b.owner === this.currentPlayer) this.updateMoney();
-                    }
-                }
-
-                if (b.type === 'barracks' && b.built && b.hp > 0) {
-                    // Auto-start training from queue if idle
-                    if (!b.training && b.trainQueue > 0) {
-                        b.training = 'soldier';
+                const def = BUILD_TYPES[b.type];
+                if (def.production && b.built && b.hp > 0) {
+                    if (!b.training && b.trainQueue.length > 0) {
+                        b.training = b.trainQueue.shift();
                         b.trainProgress = 0;
-                        b.trainQueue--;
                     }
-                    // Progress current training
                     if (b.training) {
-                        b.trainProgress += dt / BUILD_TYPES.barracks.trainTime;
+                        const unitDef = UNIT_TYPES[b.training];
+                        b.trainProgress += (dt / unitDef.trainTime) * buildSpeed;
                         if (b.trainProgress >= 1) {
+                            const producedType = b.training;
                             b.trainProgress = 0;
                             b.training = null;
-                            const spawnX = b.tx + b.size;
-                            const spawnY = b.ty + Math.floor(b.size / 2);
-                            p.units.push(this.createUnit('soldier', spawnX, spawnY, b.owner));
+                            this.spawnProducedUnit(p, b, producedType);
                             if (b.owner === this.currentPlayer) {
                                 const qLeft = this._getTotalTrainQueue(p);
-                            this.eva(`Unit ready.${qLeft > 0 ? ` (${qLeft} queued)` : ''}`);
-                            this._updateQueueBadge();
+                                this.eva(`${unitDef.name} ready.${qLeft > 0 ? ` (${qLeft} queued)` : ''}`);
+                                this._updateQueueBadge();
                                 this.updateUI();
                             }
                         }
@@ -833,7 +1061,7 @@ class GameState {
                 }
 
                 if (b.hp <= 0) {
-                    this.effects.push({ type: 'explosion', x: b.tx + 1, y: b.ty + 1, frame: 0, timer: 0, big: true });
+                    this.effects.push({ type: 'explosion', x: b.tx + b.size / 2, y: b.ty + b.size / 2, frame: 0, timer: 0, big: true });
                     this.renderer3d.removeBuilding(b);
                 }
             }
@@ -844,6 +1072,11 @@ class GameState {
     updateUnits(dt) {
         for (const p of this.players) {
             for (const u of p.units) {
+                if (u.type === 'harvester') {
+                    this.updateHarvesterUnit(u, p, dt);
+                    continue;
+                }
+
                 if (u.state === 'dead') {
                     u.deadTimer += dt;
                     continue;
@@ -1118,7 +1351,7 @@ class GameState {
         this.projectiles.push({
             x: u.x, y: u.y,
             tx, ty,
-            speed: 8,
+            speed: u.projectileSpeed || 8,
             damage: u.damage,
             owner: u.owner,
             target
@@ -1215,90 +1448,90 @@ class GameState {
         }
     }
 
+
     // ==================== AI SYSTEM ====================
 
     updateAI(dt) {
         this.aiTimer += dt;
         if (this.aiTimer < this.aiDecisionInterval) return;
         this.aiTimer = 0;
-        this.aiDecisionInterval = 3000 + Math.random() * 2000;
+        this.aiDecisionInterval = 2500 + Math.random() * 1500;
 
         const ai = this.players[1];
-        if (!ai || ai.buildings.length === 0 && ai.units.length === 0) return;
+        if (!ai || (ai.buildings.length === 0 && ai.units.length === 0)) return;
 
-        // AI base center (approximate from first building or starting position)
         const baseX = ai.buildings.length > 0 ? ai.buildings[0].tx : MAP_SIZE - 10;
         const baseY = ai.buildings.length > 0 ? ai.buildings[0].ty : MAP_SIZE - 10;
+        const builtTypes = new Set(ai.buildings.filter(b => b.built && b.hp > 0).map(b => b.type));
 
-        // --- Economy: Build refineries (max 3) ---
-        const refineries = ai.buildings.filter(b => b.type === 'refinery');
-        if (refineries.length < 3 && ai.money >= BUILD_TYPES.refinery.cost) {
-            const pos = this._aiPickBuildPos(baseX, baseY, 'refinery');
-            if (pos) {
-                ai.money -= BUILD_TYPES.refinery.cost;
-                const b = this.createBuilding('refinery', pos.x, pos.y, 1);
-                b.built = false;
-                b.buildProgress = 0;
-                ai.buildings.push(b);
-            }
+        const tryBuild = type => {
+            const def = BUILD_TYPES[type];
+            if (ai.money < def.cost) return false;
+            if (this.getMissingPrerequisites(ai, def.prerequisites).length > 0) return false;
+            const pos = this._aiPickBuildPos(baseX, baseY, type);
+            if (!pos) return false;
+            ai.money -= def.cost;
+            const b = this.createBuilding(type, pos.x, pos.y, 1);
+            b.built = false;
+            b.buildProgress = 0;
+            ai.buildings.push(b);
+            return true;
+        };
+
+        if (POWER_SYSTEM.isLowPower(ai) && tryBuild('powerPlant')) return;
+        if (!builtTypes.has('refinery') && tryBuild('refinery')) return;
+        if (!builtTypes.has('barracks') && tryBuild('barracks')) return;
+        if (!builtTypes.has('warFactory') && tryBuild('warFactory')) return;
+        if (ai.buildings.filter(b => b.type === 'powerPlant').length < 2 && ai.money > 2200 && tryBuild('powerPlant')) return;
+
+        const harvesters = ai.units.filter(u => u.type === 'harvester' && u.state !== 'dead').length;
+        const refineries = ai.buildings.filter(b => b.type === 'refinery' && b.built && b.hp > 0).length;
+        const warFactories = this.getProductionBuildings(ai, 'harvester');
+        const barracks = this.getProductionBuildings(ai, 'soldier');
+        const tankFactories = this.getProductionBuildings(ai, 'tank');
+
+        if (warFactories.length > 0 && harvesters < Math.max(1, refineries) && ai.money >= UNIT_TYPES.harvester.cost) {
+            const wf = warFactories.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
+            ai.money -= UNIT_TYPES.harvester.cost;
+            if (!wf.training) wf.training = 'harvester';
+            else wf.trainQueue.push('harvester');
+            return;
         }
 
-        // --- Military: Build barracks (max 2) ---
-        const barracks = ai.buildings.filter(b => b.type === 'barracks');
-        if (barracks.length < 2 && ai.money >= BUILD_TYPES.barracks.cost) {
-            const pos = this._aiPickBuildPos(baseX, baseY, 'barracks');
-            if (pos) {
-                ai.money -= BUILD_TYPES.barracks.cost;
-                const b = this.createBuilding('barracks', pos.x, pos.y, 1);
-                b.built = false;
-                b.buildProgress = 0;
-                ai.buildings.push(b);
-            }
+        if (tankFactories.length > 0 && ai.money >= UNIT_TYPES.tank.cost) {
+            const wf = tankFactories.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
+            ai.money -= UNIT_TYPES.tank.cost;
+            if (!wf.training) wf.training = 'tank';
+            else wf.trainQueue.push('tank');
         }
 
-        // --- Train soldiers ---
-        const builtBarracks = ai.buildings.filter(b => b.type === 'barracks' && b.built && !b.training && b.hp > 0);
-        for (const bb of builtBarracks) {
-            if (ai.money >= UNIT_TYPES.soldier.cost) {
-                ai.money -= UNIT_TYPES.soldier.cost;
-                bb.training = 'soldier';
-                bb.trainProgress = 0;
-            }
+        if (barracks.length > 0 && ai.money >= UNIT_TYPES.soldier.cost) {
+            const bb = barracks.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
+            ai.money -= UNIT_TYPES.soldier.cost;
+            if (!bb.training) bb.training = 'soldier';
+            else bb.trainQueue.push('soldier');
         }
 
-        // --- Combat: Attack when enough soldiers ---
-        const idleSoldiers = ai.units.filter(u => u.state === 'idle' && u.hp > 0 && u.state !== 'dead');
-        const totalSoldiers = ai.units.filter(u => u.hp > 0 && u.state !== 'dead').length;
-        const attackThreshold = totalSoldiers >= 8 ? 4 : 5;
-
-        if (idleSoldiers.length >= attackThreshold) {
-            // Find player's nearest building or unit to attack
+        const combatUnits = ai.units.filter(u => this.isCombatUnit(u) && u.state === 'idle');
+        if (combatUnits.length >= 5) {
             const playerData = this.players[0];
-            let target = null;
-
-            // Prefer buildings
-            if (playerData.buildings.length > 0) {
-                target = playerData.buildings[0];
-            } else if (playerData.units.length > 0) {
-                const alive = playerData.units.filter(u => u.state !== 'dead');
-                if (alive.length > 0) target = alive[0];
-            }
-
+            let target = playerData.buildings.find(b => b.type === 'powerPlant' || b.type === 'warFactory') || playerData.buildings[0];
+            if (!target) target = playerData.units.find(u => u.state !== 'dead');
             if (target) {
-                const tx = target.tx !== undefined ? target.tx + 1 : target.x;
-                const ty = target.ty !== undefined ? target.ty + 1 : target.y;
-
-                for (const soldier of idleSoldiers) {
-                    soldier.attackTarget = target;
-                    soldier.state = 'attacking';
-                    soldier.path = this.findPath(Math.floor(soldier.x), Math.floor(soldier.y), Math.floor(tx), Math.floor(ty));
-                    soldier.pathIdx = 0;
+                const tx = target.tx !== undefined ? target.tx + target.size / 2 - 0.5 : target.x;
+                const ty = target.ty !== undefined ? target.ty + target.size / 2 - 0.5 : target.y;
+                for (const unit of combatUnits) {
+                    unit.attackTarget = target;
+                    unit.state = 'attacking';
+                    unit.path = this.findPath(Math.floor(unit.x), Math.floor(unit.y), Math.floor(tx), Math.floor(ty));
+                    unit.pathIdx = 0;
                 }
             }
         }
     }
 
     _aiPickBuildPos(baseX, baseY, type) {
+
         const size = BUILD_TYPES[type].size;
         // Try random positions near base
         for (let attempt = 0; attempt < 20; attempt++) {
@@ -1519,6 +1752,8 @@ class GameState {
         const mctx = this.minimapCtx;
         const mw = 180, mh = 180;
         const scale = mw / MAP_SIZE;
+        const ownP = this.players[this.currentPlayer];
+        const radarOffline = POWER_SYSTEM.isLowPower(ownP);
 
         mctx.fillStyle = '#0a0a1a';
         mctx.fillRect(0, 0, mw, mh);
@@ -1538,7 +1773,6 @@ class GameState {
         }
 
         // Player buildings and units (always show own)
-        const ownP = this.players[this.currentPlayer];
         mctx.fillStyle = ownP.color;
         for (const b of ownP.buildings) {
             mctx.fillRect(b.tx * scale, b.ty * scale, b.size * scale, b.size * scale);
@@ -1549,7 +1783,7 @@ class GameState {
         }
 
         // Enemy: only show in revealed fog
-        for (let pi = 0; pi < this.players.length; pi++) {
+        if (!radarOffline) for (let pi = 0; pi < this.players.length; pi++) {
             if (pi === this.currentPlayer) continue;
             const ep = this.players[pi];
             mctx.fillStyle = ep.color;
@@ -1569,6 +1803,14 @@ class GameState {
             }
         }
 
+        if (radarOffline) {
+            mctx.fillStyle = 'rgba(120,0,0,0.35)';
+            mctx.fillRect(0, 0, mw, mh);
+            mctx.fillStyle = '#ff8888';
+            mctx.font = 'bold 14px Courier New';
+            mctx.fillText('RADAR OFFLINE', 24, mh / 2);
+        }
+
         // Viewport indicator
         mctx.strokeStyle = '#fff';
         mctx.lineWidth = 1;
@@ -1583,11 +1825,13 @@ class GameState {
         );
     }
 
+
     // ==================== UI ====================
 
     setupUI() {
         this.updateUI();
         this.updateMoney();
+        this.updatePowerState(this.players[this.currentPlayer]);
 
         document.querySelectorAll('.build-tab').forEach(tab => {
             tab.addEventListener('click', () => {
@@ -1602,21 +1846,34 @@ class GameState {
         const activeTab = document.querySelector('.build-tab.active')?.dataset.tab || 'buildings';
         const container = document.getElementById('build-items');
         container.innerHTML = '';
+        const p = this.players[this.currentPlayer];
 
         if (activeTab === 'buildings') {
-            this.addBuildItem(container, 'refinery', 'Refinery', BUILD_TYPES.refinery.cost, 'Auto-income');
-            this.addBuildItem(container, 'barracks', 'Barracks', BUILD_TYPES.barracks.cost, 'Train soldiers');
+            ['powerPlant', 'refinery', 'barracks', 'warFactory'].forEach(type => {
+                const def = BUILD_TYPES[type];
+                this.addBuildItem(container, type, def.name, def.cost, def.description, false);
+            });
         } else {
-            this.addBuildItem(container, 'soldier', 'Soldier', UNIT_TYPES.soldier.cost, 'Infantry unit', true);
+            ['soldier', 'harvester', 'tank'].forEach(type => {
+                const def = UNIT_TYPES[type];
+                this.addBuildItem(container, type, def.name, def.cost, def.role, true);
+            });
         }
+
+        this.updateSelectionInfo();
+        this._updateQueueBadge();
+        this.updatePowerState(p);
     }
 
     addBuildItem(container, type, name, cost, desc, isUnit = false) {
         const p = this.players[this.currentPlayer];
+        const sourceDef = isUnit ? UNIT_TYPES[type] : BUILD_TYPES[type];
         const div = document.createElement('div');
-        div.className = 'build-item' + (p.money < cost ? ' disabled' : '');
+        const missing = this.getMissingPrerequisites(p, sourceDef.prerequisites || []);
+        const locked = missing.length > 0;
+        const affordable = p.money >= cost;
+        div.className = 'build-item' + (!affordable ? ' disabled' : '') + (locked ? ' locked' : '');
 
-        // Render 3D icon — larger for card layout
         const iconSize = 80;
         const iconCanvas = this.renderer3d.renderBuildIcon(type, p.color, iconSize);
         const iconImg = document.createElement('canvas');
@@ -1628,62 +1885,69 @@ class GameState {
         ictx.drawImage(iconCanvas, 0, 0, iconSize, iconSize);
         div.appendChild(iconImg);
 
-        // Cost badge (top-right)
         const costEl = document.createElement('div');
         costEl.className = 'item-cost';
         costEl.textContent = `$${cost}`;
         div.appendChild(costEl);
 
-        // Name label (bottom)
         const labelEl = document.createElement('div');
         labelEl.className = 'item-label';
         labelEl.textContent = name;
         div.appendChild(labelEl);
 
-        // Queue badge for units (top-left)
+        const descEl = document.createElement('div');
+        descEl.className = 'item-desc';
+        descEl.textContent = desc;
+        div.appendChild(descEl);
+
+        const statusEl = document.createElement('div');
+        statusEl.className = 'item-status';
+        statusEl.textContent = locked ? `Need ${missing.join(', ')}` : (!affordable ? 'Insufficient funds' : '');
+        if (statusEl.textContent) div.appendChild(statusEl);
+
         if (isUnit) {
-            const totalQueued = this._getTotalTrainQueue(p);
+            const totalQueued = this._getTotalTrainQueue(p, type);
             const badge = document.createElement('div');
             badge.className = 'queue-badge';
             badge.textContent = totalQueued;
             badge.style.display = totalQueued > 0 ? 'block' : 'none';
             div.appendChild(badge);
-            this._soldierQueueBadge = badge;
+            this._queueBadges = this._queueBadges || {};
+            this._queueBadges[type] = badge;
         }
 
         div.addEventListener('click', () => {
-            if (p.money < cost) { this.eva('Insufficient funds.'); return; }
+            if (locked) { this.eva(`Prerequisite missing: ${missing.join(', ')}`); return; }
+            if (!affordable) { this.eva('Insufficient funds.'); return; }
             if (isUnit) {
-                // Find barracks: prefer one with shortest queue
-                const allBarracks = p.buildings.filter(b => b.type === 'barracks' && b.built && b.hp > 0);
-                if (allBarracks.length === 0) { this.eva('No available barracks.'); return; }
-                // Sort by total queue length (training ? 1 : 0) + trainQueue
-                allBarracks.sort((a, b) => ((a.training ? 1 : 0) + a.trainQueue) - ((b.training ? 1 : 0) + b.trainQueue));
-                const barracks = allBarracks[0];
-                const totalQueued = (barracks.training ? 1 : 0) + barracks.trainQueue;
-                if (totalQueued >= 30) { this.eva('Training queue full (30 max).'); return; }
+                const buildings = this.getProductionBuildings(p, type);
+                if (buildings.length === 0) { this.eva(`No available ${BUILD_TYPES[UNIT_TYPES[type].producedBy].name}.`); return; }
+                buildings.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b));
+                const producer = buildings[0];
+                if (this.getQueueLength(producer) >= 20) { this.eva('Production queue full (20 max).'); return; }
                 p.money -= cost;
-                if (!barracks.training) {
-                    barracks.training = 'soldier';
-                    barracks.trainProgress = 0;
+                if (!producer.training) {
+                    producer.training = type;
+                    producer.trainProgress = 0;
                 } else {
-                    barracks.trainQueue++;
+                    producer.trainQueue.push(type);
                 }
                 this.updateMoney();
-                const qTotal = this._getTotalTrainQueue(p);
-                this.eva(`Training soldier... (${qTotal} in queue)`);
+                const qTotal = this._getTotalTrainQueue(p, type);
+                this.eva(`Training ${name}... (${qTotal} queued)`);
                 this._updateQueueBadge();
             } else {
                 this.placingBuilding = type;
                 this.eva(`Select location for ${name}.`);
             }
+            this.updateUI();
         });
 
         container.appendChild(div);
     }
 
     updateMoney() {
-        document.getElementById('money').textContent = this.players[this.currentPlayer].money;
+        document.getElementById('money').textContent = Math.floor(this.players[this.currentPlayer].money);
     }
 
     updateSelectionInfo() {
@@ -1695,45 +1959,59 @@ class GameState {
 
         if (this.selected.length === 1) {
             const s = this.selected[0];
-            if (s.type === 'soldier') {
-                info.innerHTML = `<div style="color:#00ff88">Soldier</div>
-                    <div>HP: ${s.hp}/${s.maxHp}</div>
-                    <div>DMG: ${s.damage} | RNG: ${s.range}</div>
+            if (s.tx === undefined) {
+                const extras = [];
+                if (s.role === 'harvester') extras.push(`ORE: ${Math.floor(s.cargo)}/${s.cargoCapacity}`);
+                else extras.push(`DMG: ${s.damage} | RNG: ${s.range}`);
+                info.innerHTML = `<div style="color:#00ff88">${this.getDisplayName(s.type)}</div>
+                    <div>HP: ${Math.floor(s.hp)}/${s.maxHp}</div>
+                    <div>${extras.join(' ')}</div>
                     <div style="color:#666;font-size:9px">${s.state}</div>`;
             } else {
-                info.innerHTML = `<div style="color:#ffd700">${s.type === 'refinery' ? 'Refinery' : 'Barracks'}</div>
-                    <div>HP: ${s.hp}/${s.maxHp}</div>
-                    ${s.training ? `<div>Training: ${Math.floor(s.trainProgress * 100)}%${s.trainQueue > 0 ? ` (+${s.trainQueue} queued)` : ''}</div>` : ''}
-                    ${!s.built ? `<div style="color:#ff8800">Building: ${Math.floor(s.buildProgress * 100)}%</div>` : ''}
-                    ${s.type === 'refinery' ? `<div style="color:#ffd700">+$${BUILD_TYPES.refinery.incomeRate}/2s</div>` : ''}`;
+                const statusBits = [];
+                if (s.training) statusBits.push(`Producing: ${this.getDisplayName(s.training)} ${Math.floor(s.trainProgress * 100)}%`);
+                if (!s.built) statusBits.push(`Building: ${Math.floor(s.buildProgress * 100)}%`);
+                const def = BUILD_TYPES[s.type];
+                if (def.powerSupply) statusBits.push(`Power +${def.powerSupply}`);
+                if (def.powerDrain) statusBits.push(`Drain ${def.powerDrain}`);
+                info.innerHTML = `<div style="color:#ffd700">${this.getDisplayName(s.type)}</div>
+                    <div>HP: ${Math.floor(s.hp)}/${s.maxHp}</div>
+                    ${statusBits.map(bit => `<div>${bit}</div>`).join('')}`;
             }
         } else {
-            const soldiers = this.selected.filter(u => u.type === 'soldier');
-            info.innerHTML = `<div style="color:#00ff88">${soldiers.length} Soldiers selected</div>
-                <div style="color:#666;font-size:9px">Right-click to move/attack</div>`;
+            const units = this.selected.filter(u => u.tx === undefined);
+            const harvesters = units.filter(u => u.role === 'harvester').length;
+            const fighters = units.length - harvesters;
+            info.innerHTML = `<div style="color:#00ff88">${units.length} units selected</div>
+                <div>${fighters} combat | ${harvesters} harvesters</div>
+                <div style="color:#666;font-size:9px">Right-click commands apply to combat units only</div>`;
         }
     }
 
-    _getTotalTrainQueue(player) {
+    _getTotalTrainQueue(player, unitType = null) {
         let total = 0;
         for (const b of player.buildings) {
-            if (b.type === 'barracks' && b.hp > 0) {
-                total += (b.training ? 1 : 0) + b.trainQueue;
-            }
+            if (b.hp <= 0) continue;
+            const producer = unitType ? UNIT_TYPES[unitType]?.producedBy : null;
+            if (producer && b.type !== producer) continue;
+            total += (b.training ? 1 : 0) + (b.trainQueue?.length || 0);
         }
         return total;
     }
 
     _updateQueueBadge() {
-        if (this._soldierQueueBadge) {
-            const p = this.players[this.currentPlayer];
-            const total = this._getTotalTrainQueue(p);
-            this._soldierQueueBadge.textContent = total;
-            this._soldierQueueBadge.style.display = total > 0 ? 'inline-block' : 'none';
-        }
+        if (!this._queueBadges) return;
+        const p = this.players[this.currentPlayer];
+        Object.keys(this._queueBadges).forEach(type => {
+            const badge = this._queueBadges[type];
+            const total = this._getTotalTrainQueue(p, type);
+            badge.textContent = total;
+            badge.style.display = total > 0 ? 'inline-block' : 'none';
+        });
     }
 
     eva(msg) {
+
         this.evaEl.textContent = msg;
         this.evaEl.classList.add('show');
         clearTimeout(this.evaTimeout);
@@ -1756,5 +2034,5 @@ class GameState {
 
 // Start the game!
 window.addEventListener('DOMContentLoaded', () => {
-    new GameState();
+    window.game = new GameState();
 });

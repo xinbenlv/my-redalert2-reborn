@@ -545,6 +545,213 @@ class ModelFactory {
         return group;
     }
 
+    createPowerPlant(factionColor) {
+        const fc = this._factionColor(factionColor);
+        const group = new THREE.Group();
+
+        const base = new THREE.Mesh(
+            new THREE.BoxGeometry(1.9, 0.14, 1.9),
+            this._mat(0x6d6d72, { roughness: 0.85, metalness: 0.15 })
+        );
+        base.position.y = 0.07;
+        group.add(base);
+
+        const body = new THREE.Mesh(
+            new THREE.BoxGeometry(1.2, 0.8, 1.1),
+            this._mat(0x707883, { roughness: 0.65, metalness: 0.25 })
+        );
+        body.position.set(0, 0.5, 0.1);
+        body.castShadow = true;
+        group.add(body);
+
+        const reactor = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.28, 0.34, 0.9, 10),
+            this._mat(0x98a0a8, { roughness: 0.45, metalness: 0.55, emissive: fc, emissiveIntensity: 0.12 })
+        );
+        reactor.position.set(0.42, 0.6, -0.35);
+        reactor.castShadow = true;
+        group.add(reactor);
+
+        const coil = new THREE.Mesh(
+            new THREE.TorusGeometry(0.18, 0.035, 6, 16),
+            this._mat(fc, { roughness: 0.4, metalness: 0.6, emissive: fc, emissiveIntensity: 0.25 })
+        );
+        coil.rotation.x = Math.PI / 2;
+        coil.position.set(0.42, 0.92, -0.35);
+        group.add(coil);
+
+        const vent1 = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.08, 0.1, 0.9, 8),
+            this._mat(0x55585e, { metalness: 0.45 })
+        );
+        vent1.position.set(-0.42, 0.78, -0.42);
+        group.add(vent1);
+
+        const vent2 = vent1.clone();
+        vent2.position.z = 0.3;
+        group.add(vent2);
+
+        const stripe = new THREE.Mesh(
+            new THREE.BoxGeometry(1.24, 0.08, 0.08),
+            this._mat(fc, { roughness: 0.45 })
+        );
+        stripe.position.set(0, 0.55, 0.56);
+        group.add(stripe);
+
+        group.userData.modelType = 'powerPlant';
+        group.userData.factionColor = fc;
+        return group;
+    }
+
+    createWarFactory(factionColor) {
+        const fc = this._factionColor(factionColor);
+        const group = new THREE.Group();
+
+        const slab = new THREE.Mesh(
+            new THREE.BoxGeometry(2.8, 0.12, 2.8),
+            this._mat(0x6c6d72, { roughness: 0.9, metalness: 0.1 })
+        );
+        slab.position.y = 0.06;
+        group.add(slab);
+
+        const hall = new THREE.Mesh(
+            new THREE.BoxGeometry(2.3, 0.95, 2.0),
+            this._mat(0x5a656e, { roughness: 0.7, metalness: 0.25 })
+        );
+        hall.position.set(0, 0.56, 0);
+        hall.castShadow = true;
+        group.add(hall);
+
+        const bayDoor = new THREE.Mesh(
+            new THREE.BoxGeometry(0.95, 0.7, 0.08),
+            this._mat(0x2b3138, { roughness: 0.55, metalness: 0.45 })
+        );
+        bayDoor.position.set(0, 0.42, 1.04);
+        group.add(bayDoor);
+
+        const gantry = new THREE.Mesh(
+            new THREE.BoxGeometry(2.45, 0.18, 0.3),
+            this._mat(fc, { roughness: 0.45, metalness: 0.3 })
+        );
+        gantry.position.set(0, 1.05, 0.95);
+        group.add(gantry);
+
+        const stack = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.14, 0.18, 1.2, 10),
+            this._mat(0x6d7278, { roughness: 0.5, metalness: 0.45 })
+        );
+        stack.position.set(-0.95, 0.82, -0.7);
+        group.add(stack);
+
+        const craneArm = new THREE.Mesh(
+            new THREE.BoxGeometry(0.14, 0.14, 1.5),
+            this._mat(0x84898f, { roughness: 0.55, metalness: 0.4 })
+        );
+        craneArm.position.set(0.95, 1.0, -0.1);
+        craneArm.rotation.y = 0.2;
+        group.add(craneArm);
+
+        group.userData.modelType = 'warFactory';
+        group.userData.factionColor = fc;
+        return group;
+    }
+
+    createHarvester(factionColor) {
+        const fc = this._factionColor(factionColor);
+        const group = new THREE.Group();
+        const chassisMat = this._mat(0x59616d, { roughness: 0.55, metalness: 0.4 });
+
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.22, 0.9), chassisMat);
+        body.position.y = 0.2;
+        body.castShadow = true;
+        group.add(body);
+
+        const cab = new THREE.Mesh(
+            new THREE.BoxGeometry(0.36, 0.24, 0.26),
+            this._mat(0x89939d, { roughness: 0.45, metalness: 0.35 })
+        );
+        cab.position.set(0, 0.34, -0.18);
+        group.add(cab);
+
+        const hopper = new THREE.Mesh(
+            new THREE.BoxGeometry(0.44, 0.26, 0.38),
+            this._mat(fc, { roughness: 0.45, metalness: 0.3 })
+        );
+        hopper.position.set(0, 0.34, 0.22);
+        group.add(hopper);
+        group.userData.cargoPod = hopper;
+
+        for (const x of [-0.26, 0.26]) {
+            for (const z of [-0.28, 0.28]) {
+                const wheel = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.12, 0.12, 0.08, 10),
+                    this._mat(0x252525, { roughness: 0.85 })
+                );
+                wheel.rotation.z = Math.PI / 2;
+                wheel.position.set(x, 0.12, z);
+                group.add(wheel);
+            }
+        }
+
+        const drill = new THREE.Mesh(
+            new THREE.ConeGeometry(0.08, 0.24, 6),
+            this._mat(0xb48d22, { roughness: 0.35, metalness: 0.65 })
+        );
+        drill.rotation.x = Math.PI / 2;
+        drill.position.set(0, 0.18, 0.56);
+        group.add(drill);
+
+        group.userData.modelType = 'harvester';
+        group.userData.factionColor = fc;
+        return group;
+    }
+
+    createTank(factionColor) {
+        const fc = this._factionColor(factionColor);
+        const group = new THREE.Group();
+        const hullMat = this._mat(0x65707a, { roughness: 0.55, metalness: 0.35 });
+
+        const hull = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.2, 1.05), hullMat);
+        hull.position.y = 0.18;
+        hull.castShadow = true;
+        group.add(hull);
+
+        const turret = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.24, 0.28, 0.18, 12),
+            this._mat(fc, { roughness: 0.45, metalness: 0.35 })
+        );
+        turret.position.y = 0.34;
+        turret.castShadow = true;
+        group.add(turret);
+        group.userData.turret = turret;
+
+        const barrel = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.04, 0.05, 0.82, 8),
+            this._mat(0x383d44, { roughness: 0.45, metalness: 0.55 })
+        );
+        barrel.rotation.x = Math.PI / 2;
+        barrel.position.set(0, 0.34, 0.48);
+        barrel.castShadow = true;
+        group.add(barrel);
+        group.userData.barrel = barrel;
+
+        const treadLeft = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 1.12), this._mat(0x22262d, { roughness: 0.8 }));
+        treadLeft.position.set(-0.38, 0.1, 0);
+        group.add(treadLeft);
+        const treadRight = treadLeft.clone();
+        treadRight.position.x = 0.38;
+        group.add(treadRight);
+
+        const muzzleFlash = new THREE.PointLight(0xffaa00, 0, 2.2);
+        muzzleFlash.position.set(0, 0.38, 0.92);
+        group.add(muzzleFlash);
+        group.userData.muzzleFlash = muzzleFlash;
+
+        group.userData.modelType = 'tank';
+        group.userData.factionColor = fc;
+        return group;
+    }
+
     // ==================== ORE CRYSTALS ====================
 
     createOreCrystal() {
