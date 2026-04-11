@@ -107,6 +107,23 @@ window.UNIT_TYPES = {
         producedBy: 'warFactory',
         prerequisites: ['warFactory', 'refinery']
     },
+    mcv: {
+        name: 'MCV',
+        cost: 3000,
+        trainTime: 15000,
+        hp: 420,
+        speed: 0.62,
+        damage: 0,
+        range: 0,
+        fireRate: 0,
+        sight: 7,
+        armorType: 'heavy',
+        role: 'mcv',
+        canDeploy: true,
+        deploysTo: 'constructionYard',
+        producedBy: 'warFactory',
+        prerequisites: ['warFactory', 'refinery']
+    },
     tank: {
         name: 'Rhino Tank',
         cost: 900,

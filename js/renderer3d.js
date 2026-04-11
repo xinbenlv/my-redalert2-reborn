@@ -222,7 +222,8 @@ class Renderer3D {
         if (this.buildingMeshes.has(building)) return;
 
         let mesh;
-        if (building.type === 'refinery') mesh = this.models.createRefinery(factionColor);
+        if (building.type === 'constructionYard') mesh = this.models.createConstructionYard(factionColor);
+        else if (building.type === 'refinery') mesh = this.models.createRefinery(factionColor);
         else if (building.type === 'barracks') mesh = this.models.createBarracks(factionColor);
         else if (building.type === 'powerPlant') mesh = this.models.createPowerPlant(factionColor);
         else if (building.type === 'radarDome') mesh = this.models.createRadarDome(factionColor);
@@ -272,6 +273,7 @@ class Renderer3D {
         let mesh;
         if (unit.type === 'soldier' || unit.type === 'rocketInfantry' || unit.type === 'flakTrooper' || unit.type === 'engineer') mesh = this.models.createSoldier(factionColor);
         else if (unit.type === 'harvester') mesh = this.models.createHarvester(factionColor);
+        else if (unit.type === 'mcv') mesh = this.models.createMCV(factionColor);
         else if (unit.type === 'tank') mesh = this.models.createTank(factionColor);
         if (!mesh) return;
 
@@ -349,6 +351,12 @@ class Renderer3D {
                 const fill = Math.max(0.35, 0.35 + (unit.cargo || 0) / unit.cargoCapacity * 0.65);
                 mesh.userData.cargoPod.scale.y = fill;
                 mesh.userData.cargoPod.position.y = 0.21 + fill * 0.13;
+            }
+        } else if (unit.type === 'mcv') {
+            mesh.rotation.x = 0;
+            this.models.flashMuzzle(mesh, false);
+            if (mesh.userData.dish) {
+                mesh.userData.dish.rotation.y += dt * 0.0012;
             }
         }
     }
@@ -619,7 +627,8 @@ class Renderer3D {
 
         // Create model
         let model;
-        if (type === 'refinery') model = this.models.createRefinery(factionColor);
+        if (type === 'constructionYard') model = this.models.createConstructionYard(factionColor);
+        else if (type === 'refinery') model = this.models.createRefinery(factionColor);
         else if (type === 'barracks') model = this.models.createBarracks(factionColor);
         else if (type === 'powerPlant') model = this.models.createPowerPlant(factionColor);
         else if (type === 'radarDome') model = this.models.createRadarDome(factionColor);
@@ -632,6 +641,9 @@ class Renderer3D {
         } else if (type === 'harvester') {
             model = this.models.createHarvester(factionColor);
             model.scale.setScalar(2.5);
+        } else if (type === 'mcv') {
+            model = this.models.createMCV(factionColor);
+            model.scale.setScalar(2.3);
         } else if (type === 'tank') {
             model = this.models.createTank(factionColor);
             model.scale.setScalar(2.3);

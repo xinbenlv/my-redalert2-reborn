@@ -37,9 +37,9 @@
 ## B. 与 RA2 遭遇战相比仍缺失的全部功能
 
 ## B1. 开局与胜负规则
-- [ ] Construction Yard（基地车展开后的主基地）
-- [ ] MCV（移动基地车）与 deploy 机制
-- [ ] 以 MCV / Construction Yard 为核心的正式开局流程
+- [x] Construction Yard（基地车展开后的主基地）
+- [x] MCV（移动基地车）与 deploy 机制
+- [x] 以 MCV / Construction Yard 为核心的正式开局流程
 - [x] 正式的遭遇战规则参数（starting credits、short/medium/long game）
 - [ ] 多出生点 / 真正的 spawn logic
 - [~] 可配置的 skirmish 选项（资金、地图、AI 数量、阵营）
@@ -111,7 +111,7 @@
 - [ ] Anti-air vehicle
 - [ ] Artillery / V3 / Siege 类远程单位
 - [ ] Terror Drone / Mirage / Prism Tank / Apocalypse / Kirov 等特色载具
-- [ ] MCV
+- [x] MCV
 - [ ] Repair IFV / support vehicle（如需要）
 
 ### B4.3 空军
@@ -263,7 +263,7 @@
 ## C. 建议执行顺序（按价值排序）
 
 ### C1. P0：先把“遭遇战成立”补齐
-- [ ] Construction Yard / MCV / 正式开局
+- [x] Construction Yard / MCV / 正式开局
 - [x] Engineer
 - [x] Dog / Rocket infantry / AA infantry（至少 2 个）
 - [x] Radar 独立建筑化

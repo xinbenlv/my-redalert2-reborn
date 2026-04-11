@@ -12,6 +12,7 @@ const UNIT_TYPES = window.UNIT_TYPES;
 const POWER_SYSTEM = window.POWER_SYSTEM;
 const MATCH_CONFIG_STORAGE_KEY = 'ra2reborn.matchConfig';
 const MATCH_PANEL_COLLAPSED_KEY = 'ra2reborn.setupCollapsed';
+const OPENING_AUTO_DEPLOY_MS = 250;
 const MAP_PROFILES = {
     classic: {
         id: 'classic',
@@ -131,8 +132,8 @@ class GameState {
         const playerFaction = getFactionProfile(this.matchConfig.playerFaction, 'player');
         const aiFaction = getFactionProfile(this.matchConfig.playerFaction, 'ai');
         this.players = [
-            { faction: playerFaction.faction, money: this.matchConfig.startingCredits, buildings: [], units: [], color: playerFaction.color, isAI: false, lowPowerNotified: false },
-            { faction: aiFaction.faction, money: this.matchConfig.startingCredits, buildings: [], units: [], color: aiFaction.color, isAI: true, lowPowerNotified: false }
+            { faction: playerFaction.faction, money: this.matchConfig.startingCredits, buildings: [], units: [], color: playerFaction.color, isAI: false, lowPowerNotified: false, startingBaseGranted: false },
+            { faction: aiFaction.faction, money: this.matchConfig.startingCredits, buildings: [], units: [], color: aiFaction.color, isAI: true, lowPowerNotified: false, startingBaseGranted: false }
         ];
         this.currentPlayer = 0;
 
@@ -156,6 +157,7 @@ class GameState {
         this.waterTimer = 0;
         this.aiTimer = 0;
         this.aiDecisionInterval = this.aiConfig.decisionMin + Math.random() * this.aiConfig.decisionRange;
+        this.elapsedMs = 0;
 
         // Game over state
         this.gameOver = false;
@@ -186,7 +188,7 @@ class GameState {
         const titleEl = document.getElementById('game-title');
         if (titleEl) titleEl.textContent = `RED ALERT 2: REBORN — ${this.mapProfile.name.toUpperCase()}`;
         updateSetupBriefing(this.matchConfig);
-        this.eva(`Skirmish loaded: ${this.mapProfile.name}. ${this.aiConfig.difficulty.toUpperCase()} AI standing by.`);
+        this.eva(`Skirmish loaded: ${this.mapProfile.name}. Deploy your MCV to establish the Construction Yard.`);
 
         // Version info
         const vEl = document.getElementById('version-info');
@@ -296,13 +298,10 @@ class GameState {
 
     spawnBase(playerIdx, bx, by) {
         const p = this.players[playerIdx];
-        p.buildings.push(this.createBuilding('powerPlant', bx, by + 3, playerIdx));
-        p.buildings.push(this.createBuilding('refinery', bx, by, playerIdx));
-        p.buildings.push(this.createBuilding('barracks', bx + 3, by, playerIdx));
-        p.units.push(this.createUnit('harvester', bx + 1, by + 4, playerIdx));
-        for (let i = 0; i < 3; i++) {
-            p.units.push(this.createUnit('soldier', bx + i, by + 3, playerIdx));
-        }
+        const mcv = this.createUnit('mcv', bx + 1, by + 1, playerIdx);
+        mcv.isStartingMCV = true;
+        mcv.autoDeployAt = OPENING_AUTO_DEPLOY_MS + playerIdx * 120;
+        p.units.push(mcv);
     }
 
     createBuilding(type, tx, ty, owner) {
@@ -361,8 +360,117 @@ class GameState {
             deadTimer: 0,
             path: null,
             pathIdx: 0,
-            _walkPhase: 0
+            _walkPhase: 0,
+            canDeploy: !!def.canDeploy,
+            deploysTo: def.deploysTo || null,
+            isStartingMCV: false,
+            autoDeployAt: null
         };
+    }
+
+    canPlaceBuildingAt(type, tx, ty, options = {}) {
+        const def = BUILD_TYPES[type];
+        if (!def) return false;
+        const ignoreBuilding = options.ignoreBuilding || null;
+        if (tx < 0 || ty < 0 || tx + def.size > MAP_SIZE || ty + def.size > MAP_SIZE) return false;
+
+        for (let dy = 0; dy < def.size; dy++) {
+            for (let dx = 0; dx < def.size; dx++) {
+                const tile = this.map[ty + dy]?.[tx + dx];
+                if (!tile || tile.type === 'water') return false;
+            }
+        }
+
+        for (const player of this.players) {
+            for (const building of player.buildings) {
+                if (building === ignoreBuilding || building.hp <= 0) continue;
+                if (tx < building.tx + building.size && tx + def.size > building.tx &&
+                    ty < building.ty + building.size && ty + def.size > building.ty) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    findNearbyConstructionSite(type, anchorX, anchorY, radius = 6, options = {}) {
+        const candidates = [];
+        for (let ty = Math.max(0, anchorY - radius); ty <= Math.min(MAP_SIZE - 1, anchorY + radius); ty++) {
+            for (let tx = Math.max(0, anchorX - radius); tx <= Math.min(MAP_SIZE - 1, anchorX + radius); tx++) {
+                if (!this.canPlaceBuildingAt(type, tx, ty, options)) continue;
+                const dist = Math.hypot(tx - anchorX, ty - anchorY);
+                candidates.push({ tx, ty, dist });
+            }
+        }
+        candidates.sort((a, b) => a.dist - b.dist);
+        return candidates[0] || null;
+    }
+
+    getMCVDeployPosition(unit) {
+        if (!unit || unit.type !== 'mcv' || unit.state === 'dead') return null;
+        const suggestedX = Math.round(unit.x) - 1;
+        const suggestedY = Math.round(unit.y) - 1;
+        return this.findNearbyConstructionSite('constructionYard', suggestedX, suggestedY, 3);
+    }
+
+    canDeployMCV(unit) {
+        return !!this.getMCVDeployPosition(unit);
+    }
+
+    grantStartingBasePackage(playerIdx, constructionYard) {
+        const player = this.players[playerIdx];
+        if (!player || player.startingBaseGranted) return;
+        const centerX = constructionYard.tx + 1;
+        const centerY = constructionYard.ty + 1;
+        const placements = {};
+        for (const type of ['powerPlant', 'refinery', 'barracks']) {
+            const site = this.findNearbyConstructionSite(type, centerX, centerY, 8);
+            if (!site) continue;
+            const building = this.createBuilding(type, site.tx, site.ty, playerIdx);
+            player.buildings.push(building);
+            placements[type] = building;
+        }
+        const refinery = placements.refinery;
+        const barracks = placements.barracks;
+        if (refinery) {
+            const harvester = this.createUnit('harvester', refinery.tx + refinery.size * 0.5, refinery.ty + refinery.size + 1.2, playerIdx);
+            player.units.push(harvester);
+            this.assignHarvesterJob(harvester, player);
+        }
+        if (barracks) {
+            for (let i = 0; i < 3; i++) {
+                player.units.push(this.createUnit('soldier', barracks.tx + 0.5 + (i * 0.6), barracks.ty + barracks.size + 0.8, playerIdx));
+            }
+        }
+        player.startingBaseGranted = true;
+    }
+
+    deployMCV(unit, options = {}) {
+        if (!unit || unit.type !== 'mcv' || unit.state === 'dead') return false;
+        const position = this.getMCVDeployPosition(unit);
+        if (!position) {
+            if (unit.owner === this.currentPlayer && !options.auto) this.eva('MCV cannot deploy here. Clear more space.');
+            return false;
+        }
+        const player = this.players[unit.owner];
+        const conyard = this.createBuilding('constructionYard', position.tx, position.ty, unit.owner);
+        player.buildings.push(conyard);
+        player.units = player.units.filter(existing => existing !== unit);
+        if (this.renderer3d?.unitMeshes?.has(unit)) {
+            this.renderer3d.removeUnit(unit);
+        }
+        if (unit.owner === this.currentPlayer) {
+            this.selected = [conyard];
+            this.commandMode = null;
+            this.updateSelectionInfo();
+            this.updateUI();
+            this.eva('MCV deployed. Construction Yard online.');
+        }
+        if (unit.isStartingMCV) {
+            this.grantStartingBasePackage(unit.owner, conyard);
+        }
+        return true;
     }
 
     getTargetArmorClass(target) {
@@ -396,6 +504,12 @@ class GameState {
                 if (this._groups[e.key]) {
                     this.selected = this._groups[e.key].filter(u => u.state !== 'dead');
                     this.updateSelectionInfo();
+                }
+            }
+            if (e.key.toLowerCase() === 'd') {
+                const unit = this.selected.length === 1 && this.selected[0]?.tx === undefined ? this.selected[0] : null;
+                if (unit?.type === 'mcv') {
+                    this.deployMCV(unit);
                 }
             }
             if (e.key === 'Escape') {
@@ -1417,6 +1531,14 @@ class GameState {
 
     update(dt) {
         if (this.gameOver) return;
+        this.elapsedMs += dt;
+        for (const player of this.players) {
+            const startingMCV = player.units.find(unit => unit.type === 'mcv' && unit.isStartingMCV && unit.state !== 'dead');
+            if (startingMCV && startingMCV.autoDeployAt !== null && this.elapsedMs >= startingMCV.autoDeployAt) {
+                this.deployMCV(startingMCV, { auto: true });
+                startingMCV.autoDeployAt = null;
+            }
+        }
         this.updateCamera(dt);
         this.updateBuildings(dt);
         this.updateUnits(dt);
@@ -2082,9 +2204,14 @@ class GameState {
         if (this.aiTimer < this.aiDecisionInterval) return;
         this.aiTimer = 0;
         this.aiDecisionInterval = this.aiConfig.decisionMin + Math.random() * this.aiConfig.decisionRange;
+        this.elapsedMs = 0;
 
         const ai = this.players[1];
         if (!ai || (ai.buildings.length === 0 && ai.units.length === 0)) return;
+        const undeployedMcv = ai.units.find(unit => unit.type === 'mcv' && unit.state !== 'dead');
+        if (undeployedMcv && this.deployMCV(undeployedMcv, { auto: true })) {
+            return;
+        }
 
         const baseX = ai.buildings.length > 0 ? ai.buildings[0].tx : MAP_SIZE - 10;
         const baseY = ai.buildings.length > 0 ? ai.buildings[0].ty : MAP_SIZE - 10;
@@ -2601,6 +2728,11 @@ class GameState {
         document.getElementById('selection-info').addEventListener('click', e => {
             const action = e.target?.dataset?.action;
             if (!action) return;
+            const selectedUnit = this.selected.length === 1 && this.selected[0]?.tx === undefined ? this.selected[0] : null;
+            if (action === 'deploy') {
+                if (selectedUnit?.type === 'mcv') this.deployMCV(selectedUnit);
+                return;
+            }
             const building = this.getPrimarySelectedBuilding();
             if (!building) return;
 
@@ -2635,7 +2767,7 @@ class GameState {
                 this.addBuildItem(container, type, def.name, def.cost, def.description, false);
             });
         } else {
-            ['soldier', 'rocketInfantry', 'flakTrooper', 'engineer', 'harvester', 'tank'].forEach(type => {
+            ['soldier', 'rocketInfantry', 'flakTrooper', 'engineer', 'harvester', 'tank', 'mcv'].forEach(type => {
                 const def = UNIT_TYPES[type];
                 const description = type === 'engineer' ? 'Captures enemy buildings on contact.' : def.role;
                 this.addBuildItem(container, type, def.name, def.cost, description, true);
@@ -2744,16 +2876,23 @@ class GameState {
             if (s.tx === undefined) {
                 const extras = [];
                 if (s.role === 'harvester') extras.push(`ORE: ${Math.floor(s.cargo)}/${s.cargoCapacity}`);
-                else if (s.role === 'engineer') {
+                else if (s.type === 'mcv') {
+                    extras.push(this.canDeployMCV(s) ? 'DEPLOY READY' : 'DEPLOY BLOCKED');
+                    extras.push('D / Deploy button');
+                } else if (s.role === 'engineer') {
                     extras.push('CAPTURE: enemy buildings');
                     if (s.captureTarget && s.captureTarget.hp > 0) {
                         extras.push(`TARGET: ${this.getDisplayName(s.captureTarget.type)}`);
                     }
                 } else extras.push(`DMG: ${s.damage} | RNG: ${s.range}`);
+                const deployButton = s.type === 'mcv'
+                    ? `<button class="selection-action" data-action="deploy" ${this.canDeployMCV(s) ? '' : 'disabled'}>Deploy MCV</button>`
+                    : '';
                 info.innerHTML = `<div style="color:#00ff88">${this.getDisplayName(s.type)}</div>
                     <div>HP: ${Math.floor(s.hp)}/${s.maxHp}</div>
                     <div>${extras.join(' | ')}</div>
-                    <div style="color:#666;font-size:9px">${s.state}</div>`;
+                    <div style="color:#666;font-size:9px">${s.state}</div>
+                    ${deployButton ? `<div class="selection-actions">${deployButton}</div>` : ''}`;
             } else {
                 const def = BUILD_TYPES[s.type];
                 const statusBits = [];

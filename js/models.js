@@ -832,6 +832,115 @@ class ModelFactory {
         return group;
     }
 
+    createConstructionYard(factionColor) {
+        const fc = this._factionColor(factionColor);
+        const group = new THREE.Group();
+        const concrete = this._mat(0x8b8f96, { roughness: 0.92, metalness: 0.08 });
+        const steel = this._mat(0x626a74, { roughness: 0.55, metalness: 0.35 });
+        const accent = this._mat(fc, { roughness: 0.45, metalness: 0.3 });
+
+        const base = new THREE.Mesh(new THREE.BoxGeometry(2.7, 0.16, 2.7), concrete);
+        base.position.y = 0.08;
+        base.receiveShadow = true;
+        group.add(base);
+
+        const platform = new THREE.Mesh(new THREE.BoxGeometry(2.15, 0.1, 2.15), this._mat(0xa7adb4, { roughness: 0.8 }));
+        platform.position.y = 0.19;
+        group.add(platform);
+
+        const commandCore = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.55, 1.1), steel);
+        commandCore.position.set(0, 0.47, -0.15);
+        commandCore.castShadow = true;
+        group.add(commandCore);
+
+        const frontGate = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.34, 0.32), this._mat(0x49515a, { roughness: 0.6 }));
+        frontGate.position.set(0, 0.31, 1.02);
+        group.add(frontGate);
+
+        const sideBayL = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 1.55), steel);
+        sideBayL.position.set(-0.88, 0.36, 0.12);
+        sideBayL.castShadow = true;
+        group.add(sideBayL);
+        const sideBayR = sideBayL.clone();
+        sideBayR.position.x = 0.88;
+        group.add(sideBayR);
+
+        const tower = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.9, 0.42), this._mat(0x737d88, { roughness: 0.5, metalness: 0.35 }));
+        tower.position.set(0.88, 0.78, -0.82);
+        tower.castShadow = true;
+        group.add(tower);
+
+        const dishMount = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.35, 8), this._mat(0x40464d, { metalness: 0.45 }));
+        dishMount.position.set(0.88, 1.28, -0.82);
+        group.add(dishMount);
+        const dish = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10, 0, Math.PI), accent);
+        dish.rotation.x = Math.PI / 2;
+        dish.position.set(0.88, 1.42, -0.82);
+        group.add(dish);
+        group.userData.dish = dish;
+
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.08, 0.08), accent);
+        stripe.position.set(0, 0.58, -1.12);
+        group.add(stripe);
+
+        const padLight = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.04, 0.22), this._mat(0x89d7ff, { emissive: 0x3aa6ff, emissiveIntensity: 0.35 }));
+        padLight.position.set(-0.8, 0.24, 0.78);
+        group.add(padLight);
+        const padLight2 = padLight.clone();
+        padLight2.position.x = 0.8;
+        group.add(padLight2);
+
+        group.userData.modelType = 'constructionYard';
+        group.userData.factionColor = fc;
+        return group;
+    }
+
+    createMCV(factionColor) {
+        const fc = this._factionColor(factionColor);
+        const group = new THREE.Group();
+        const hullMat = this._mat(0x67707b, { roughness: 0.55, metalness: 0.35 });
+        const treadMat = this._mat(0x25292f, { roughness: 0.8, metalness: 0.15 });
+        const accent = this._mat(fc, { roughness: 0.45, metalness: 0.3 });
+
+        const hull = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.26, 1.2), hullMat);
+        hull.position.y = 0.22;
+        hull.castShadow = true;
+        group.add(hull);
+
+        const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.3, 0.34), this._mat(0x8f98a1, { roughness: 0.45, metalness: 0.3 }));
+        cabin.position.set(0, 0.44, -0.22);
+        group.add(cabin);
+
+        const bay = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.26, 0.42), accent);
+        bay.position.set(0, 0.42, 0.24);
+        group.add(bay);
+
+        const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.26, 8), this._mat(0x40464d, { metalness: 0.45 }));
+        mast.position.set(0.28, 0.56, 0.08);
+        group.add(mast);
+
+        const dish = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8, 0, Math.PI), accent);
+        dish.rotation.x = Math.PI / 2;
+        dish.position.set(0.28, 0.67, 0.08);
+        group.add(dish);
+        group.userData.dish = dish;
+
+        for (const x of [-0.44, 0.44]) {
+            const tread = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 1.28), treadMat);
+            tread.position.set(x, 0.1, 0);
+            group.add(tread);
+        }
+
+        const ramp = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.08, 0.28), this._mat(0x505861, { roughness: 0.55, metalness: 0.25 }));
+        ramp.position.set(0, 0.12, 0.74);
+        ramp.rotation.x = -0.25;
+        group.add(ramp);
+
+        group.userData.modelType = 'mcv';
+        group.userData.factionColor = fc;
+        return group;
+    }
+
     createHarvester(factionColor) {
         const fc = this._factionColor(factionColor);
         const group = new THREE.Group();

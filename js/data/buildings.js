@@ -1,6 +1,19 @@
 // Static building definitions for Red Alert 2: Reborn.
 // Exposes BUILD_TYPES globally so the no-bundler runtime can consume them.
 window.BUILD_TYPES = {
+    constructionYard: {
+        name: 'Construction Yard',
+        cost: 3200,
+        buildTime: 0,
+        hp: 1500,
+        sight: 7,
+        size: 3,
+        powerSupply: 0,
+        powerDrain: 0,
+        providesBuildRadius: true,
+        description: 'Deploys from the MCV and anchors your base build grid.',
+        prerequisites: []
+    },
     powerPlant: {
         name: 'Power Plant',
         cost: 800,
@@ -11,7 +24,7 @@ window.BUILD_TYPES = {
         powerSupply: 100,
         powerDrain: 0,
         description: 'Provides base power.',
-        prerequisites: []
+        prerequisites: ['constructionYard']
     },
     refinery: {
         name: 'Refinery',
@@ -24,7 +37,7 @@ window.BUILD_TYPES = {
         powerDrain: 20,
         acceptsOre: true,
         description: 'Accepts ore from harvesters.',
-        prerequisites: ['powerPlant']
+        prerequisites: ['constructionYard', 'powerPlant']
     },
     barracks: {
         name: 'Barracks',
@@ -37,7 +50,7 @@ window.BUILD_TYPES = {
         powerDrain: 25,
         production: ['soldier', 'rocketInfantry', 'flakTrooper', 'engineer'],
         description: 'Trains infantry and engineers.',
-        prerequisites: ['powerPlant']
+        prerequisites: ['constructionYard', 'powerPlant']
     },
     radarDome: {
         name: 'Radar Dome',
@@ -50,7 +63,7 @@ window.BUILD_TYPES = {
         powerDrain: 35,
         providesRadar: true,
         description: 'Restores minimap radar coverage when powered.',
-        prerequisites: ['powerPlant', 'barracks']
+        prerequisites: ['constructionYard', 'powerPlant', 'barracks']
     },
     warFactory: {
         name: 'War Factory',
@@ -61,9 +74,9 @@ window.BUILD_TYPES = {
         size: 3,
         powerSupply: 0,
         powerDrain: 45,
-        production: ['harvester', 'tank'],
+        production: ['harvester', 'tank', 'mcv'],
         description: 'Produces vehicles.',
-        prerequisites: ['powerPlant', 'refinery', 'barracks']
+        prerequisites: ['constructionYard', 'powerPlant', 'refinery', 'barracks']
     },
     pillbox: {
         name: 'Pillbox',
@@ -86,7 +99,7 @@ window.BUILD_TYPES = {
             building: 0.45
         },
         description: 'Rapid anti-infantry bunker defense.',
-        prerequisites: ['powerPlant', 'barracks']
+        prerequisites: ['constructionYard', 'powerPlant', 'barracks']
     },
     sentryGun: {
         name: 'Sentry Gun',
@@ -109,6 +122,6 @@ window.BUILD_TYPES = {
             building: 1.1
         },
         description: 'Powered turret for anti-vehicle defense.',
-        prerequisites: ['powerPlant', 'refinery', 'barracks']
+        prerequisites: ['constructionYard', 'powerPlant', 'refinery', 'barracks']
     }
 };
