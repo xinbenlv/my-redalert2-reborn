@@ -921,6 +921,56 @@ class ModelFactory {
         return group;
     }
 
+    createSandbagWall(factionColor) {
+        const fc = this._factionColor(factionColor);
+        const group = new THREE.Group();
+        const baseMat = this._mat(0x8c7758, { roughness: 0.96, metalness: 0.02 });
+        const trimMat = this._mat(fc, { roughness: 0.45, metalness: 0.18 });
+
+        const slab = new THREE.Mesh(
+            new THREE.BoxGeometry(0.94, 0.06, 0.94),
+            this._mat(0x6a655f, { roughness: 0.95, metalness: 0.04 })
+        );
+        slab.position.y = 0.03;
+        group.add(slab);
+
+        const rowOffsets = [-0.18, 0, 0.18];
+        rowOffsets.forEach((z, rowIndex) => {
+            for (let i = -2; i <= 2; i++) {
+                const bag = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.12, 10, 8),
+                    baseMat
+                );
+                bag.scale.set(1.25, 0.72, 0.9);
+                bag.position.set(i * 0.18 + (rowIndex % 2 === 0 ? 0 : 0.08), 0.12 + rowIndex * 0.07, z);
+                bag.castShadow = true;
+                group.add(bag);
+            }
+        });
+
+        const cap = new THREE.Mesh(
+            new THREE.BoxGeometry(0.82, 0.06, 0.14),
+            trimMat
+        );
+        cap.position.set(0, 0.34, 0);
+        group.add(cap);
+
+        const postL = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.03, 0.03, 0.38, 8),
+            this._mat(0x43464a, { roughness: 0.58, metalness: 0.35 })
+        );
+        postL.position.set(-0.34, 0.22, 0);
+        postL.castShadow = true;
+        group.add(postL);
+        const postR = postL.clone();
+        postR.position.x = 0.34;
+        group.add(postR);
+
+        group.userData.modelType = 'sandbagWall';
+        group.userData.factionColor = fc;
+        return group;
+    }
+
     createConstructionYard(factionColor) {
         const fc = this._factionColor(factionColor);
         const group = new THREE.Group();

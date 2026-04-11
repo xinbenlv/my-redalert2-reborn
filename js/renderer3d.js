@@ -231,6 +231,7 @@ class Renderer3D {
         else if (building.type === 'battleLab') mesh = this.models.createBattleLab(factionColor);
         else if (building.type === 'pillbox') mesh = this.models.createPillbox(factionColor);
         else if (building.type === 'sentryGun') mesh = this.models.createSentryGun(factionColor);
+        else if (building.type === 'sandbagWall') mesh = this.models.createSandbagWall(factionColor);
 
         if (!mesh) return;
 
@@ -493,6 +494,7 @@ class Renderer3D {
             else if (type === 'battleLab') this._placementPreview = this.models.createBattleLab(factionColor);
             else if (type === 'pillbox') this._placementPreview = this.models.createPillbox(factionColor);
             else if (type === 'sentryGun') this._placementPreview = this.models.createSentryGun(factionColor);
+            else if (type === 'sandbagWall') this._placementPreview = this.models.createSandbagWall(factionColor);
             this._placementPreview.traverse(child => {
                 if (child.material) {
                     child.material = child.material.clone();
@@ -658,6 +660,7 @@ class Renderer3D {
         else if (type === 'battleLab') model = this.models.createBattleLab(factionColor);
         else if (type === 'pillbox') model = this.models.createPillbox(factionColor);
         else if (type === 'sentryGun') model = this.models.createSentryGun(factionColor);
+        else if (type === 'sandbagWall') model = this.models.createSandbagWall(factionColor);
         else if (type === 'soldier' || type === 'rocketInfantry' || type === 'flakTrooper' || type === 'engineer') {
             model = this.models.createSoldier(factionColor);
             model.scale.setScalar(4);

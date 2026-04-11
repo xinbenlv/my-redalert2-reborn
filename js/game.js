@@ -3035,7 +3035,7 @@ class GameState {
         const p = this.players[this.currentPlayer];
 
         if (activeTab === 'buildings') {
-            ['powerPlant', 'refinery', 'barracks', 'radarDome', 'warFactory', 'battleLab', 'pillbox', 'sentryGun'].forEach(type => {
+            ['powerPlant', 'refinery', 'barracks', 'radarDome', 'warFactory', 'battleLab', 'pillbox', 'sentryGun', 'sandbagWall'].forEach(type => {
                 const def = BUILD_TYPES[type];
                 this.addBuildItem(container, type, def.name, def.cost, def.description, false);
             });

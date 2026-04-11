@@ -136,5 +136,17 @@ window.BUILD_TYPES = {
         },
         description: 'Powered turret for anti-vehicle defense.',
         prerequisites: ['constructionYard', 'powerPlant', 'refinery', 'barracks']
+    },
+    sandbagWall: {
+        name: 'Sandbag Wall',
+        cost: 100,
+        buildTime: 1800,
+        hp: 260,
+        sight: 2,
+        size: 1,
+        powerSupply: 0,
+        powerDrain: 0,
+        description: 'Cheap choke-point barrier that blocks movement and buys time for your base defenses.',
+        prerequisites: ['constructionYard', 'powerPlant']
     }
 };

@@ -81,7 +81,7 @@
 - [x] Pillbox / Sentry Gun 级基础防御
 - [ ] Patriot / Flak Cannon / Tesla Coil / Prism Tower 等阵营防御
 - [ ] 防空建筑
-- [ ] 围墙（Wall / Sandbag / Concrete Wall）
+- [x] 围墙（Wall / Sandbag / Concrete Wall）
 - [ ] 防御建筑供电 / 低电停摆逻辑细化
 
 ### B3.5 超级武器建筑
@@ -279,7 +279,7 @@
 - [x] veterancy
 - [ ] air units
 - [x] more maps
-- [ ] walls / bridges / garrison
+- [~] walls / bridges / garrison（已补 walls，bridges / garrison 仍未完成）
 
 ### C3. P2：把“RA2 味道”补出来
 - [ ] sprite/cameo 主视觉切换
