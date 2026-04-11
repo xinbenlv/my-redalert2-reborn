@@ -189,8 +189,8 @@
 - [x] 基础地形 + 水域 + 矿区
 - [x] 可玩的多张遭遇战地图
 - [ ] 桥梁 / 可破坏桥梁
-- [~] 建筑驻守点 / 城市地图元素（已补地图内中立 Battle Bunker 驻守点；更完整的城市建筑群与多样驻守目标仍未完成）
-- [ ] 中立建筑
+- [~] 建筑驻守点 / 城市地图元素（已补地图内中立 Battle Bunker + Civilian Block 驻守点，开始有城市街区争夺；更完整的城市建筑群、多样立面与桥梁仍未完成）
+- [~] 中立建筑（已补可占领/可驻守的 Civilian Block 中立建筑，仍缺更多非驻守型地图中立设施）
 - [ ] 地图装饰物（树、路灯、残骸、围栏、道路）
 - [ ] 地表 decal / scorch mark / dirt variation
 - [ ] 更完整的 tile variation
@@ -279,7 +279,7 @@
 - [x] veterancy
 - [x] air units（已补 Airfield + Harrier 基础空袭链路）
 - [x] more maps
-- [~] walls / bridges / garrison（已补 walls + Battle Bunker infantry garrison + 地图内中立 Battle Bunker 驻守点，bridges 与更完整的城市驻守群仍未完成）
+- [~] walls / bridges / garrison（已补 walls + Battle Bunker / Civilian Block infantry garrison + 地图内中立城市驻守点，bridges 与更完整的城市群仍未完成）
 
 ### C3. P2：把“RA2 味道”补出来
 - [ ] sprite/cameo 主视觉切换

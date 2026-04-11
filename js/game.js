@@ -25,7 +25,8 @@ const MAP_PROFILES = {
         briefing: 'Balanced ore clusters with the familiar river split.',
         spawnPoints: [{ x: 8, y: 8 }, { x: MAP_SIZE - 10, y: MAP_SIZE - 10 }, { x: MAP_SIZE - 10, y: 8 }, { x: 8, y: MAP_SIZE - 10 }],
         neutralStructures: [
-            { type: 'battleBunker', x: 19, y: 19 },
+            { type: 'battleBunker', x: 20, y: 19 },
+            { type: 'civilianBlock', x: 15, y: 14 },
         ],
     },
     crossroads: {
@@ -38,6 +39,8 @@ const MAP_PROFILES = {
             { type: 'battleBunker', x: 21, y: 18 },
             { type: 'battleBunker', x: 18, y: 21 },
             { type: 'battleBunker', x: 21, y: 21 },
+            { type: 'civilianBlock', x: 15, y: 16 },
+            { type: 'civilianBlock', x: 23, y: 16 },
         ],
     },
     'twin-rivers': {
@@ -48,6 +51,8 @@ const MAP_PROFILES = {
         neutralStructures: [
             { type: 'battleBunker', x: 14, y: 18 },
             { type: 'battleBunker', x: 25, y: 18 },
+            { type: 'civilianBlock', x: 20, y: 14 },
+            { type: 'civilianBlock', x: 20, y: 22 },
         ],
     },
 };

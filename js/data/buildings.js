@@ -217,6 +217,19 @@ window.BUILD_TYPES = {
         description: 'Infantry garrison bunker that projects their firepower from hardened cover.',
         prerequisites: ['constructionYard', 'powerPlant', 'barracks']
     },
+    civilianBlock: {
+        name: 'Civilian Block',
+        cost: 0,
+        buildTime: 0,
+        hp: 900,
+        sight: 7,
+        size: 2,
+        powerSupply: 0,
+        powerDrain: 0,
+        garrisonCapacity: 4,
+        description: 'Neutral urban structure that infantry can seize for dense city-block crossfire.',
+        prerequisites: []
+    },
     sandbagWall: {
         name: 'Sandbag Wall',
         cost: 100,

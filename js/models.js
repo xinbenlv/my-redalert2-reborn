@@ -1094,6 +1094,73 @@ class ModelFactory {
         return group;
     }
 
+    createCivilianBlock(factionColor) {
+        const fc = this._factionColor(factionColor);
+        const group = new THREE.Group();
+
+        const base = new THREE.Mesh(
+            new THREE.BoxGeometry(1.92, 0.08, 1.92),
+            this._mat(0x6c6660, { roughness: 0.95, metalness: 0.04 })
+        );
+        base.position.y = 0.04;
+        group.add(base);
+
+        const shell = new THREE.Mesh(
+            new THREE.BoxGeometry(1.72, 0.92, 1.72),
+            this._mat(0xb8ad9e, { roughness: 0.88, metalness: 0.05 })
+        );
+        shell.position.y = 0.5;
+        shell.castShadow = true;
+        group.add(shell);
+
+        const roof = new THREE.Mesh(
+            new THREE.BoxGeometry(1.82, 0.1, 1.82),
+            this._mat(0x4d5258, { roughness: 0.58, metalness: 0.24 })
+        );
+        roof.position.y = 1.02;
+        roof.castShadow = true;
+        group.add(roof);
+
+        const doorway = new THREE.Mesh(
+            new THREE.BoxGeometry(0.28, 0.42, 0.08),
+            this._mat(0x2d2f33, { roughness: 0.76, metalness: 0.12 })
+        );
+        doorway.position.set(0, 0.28, 0.82);
+        group.add(doorway);
+
+        const windows = [
+            [-0.52, 0.44, 0.82], [0, 0.44, 0.82], [0.52, 0.44, 0.82],
+            [-0.52, 0.74, 0.82], [0, 0.74, 0.82], [0.52, 0.74, 0.82],
+            [-0.82, 0.44, -0.46], [-0.82, 0.74, -0.46], [0.82, 0.44, -0.46], [0.82, 0.74, -0.46]
+        ];
+        windows.forEach(([x, y, z]) => {
+            const pane = new THREE.Mesh(
+                new THREE.BoxGeometry(0.24, 0.16, 0.06),
+                this._mat(0x9dc6d8, { roughness: 0.2, metalness: 0.12, emissive: 0x294455, emissiveIntensity: 0.08 })
+            );
+            pane.position.set(x, y, z);
+            group.add(pane);
+        });
+
+        const banner = new THREE.Mesh(
+            new THREE.BoxGeometry(0.82, 0.08, 0.06),
+            this._mat(fc, { roughness: 0.42, metalness: 0.22, emissive: fc, emissiveIntensity: 0.1 })
+        );
+        banner.position.set(0, 0.92, 0.85);
+        group.add(banner);
+
+        const awning = new THREE.Mesh(
+            new THREE.BoxGeometry(0.92, 0.06, 0.28),
+            this._mat(0x8f4343, { roughness: 0.74, metalness: 0.1 })
+        );
+        awning.position.set(0, 0.58, 0.96);
+        group.add(awning);
+
+        group.userData.modelType = 'civilianBlock';
+        group.userData.factionColor = fc;
+        return group;
+    }
+
     createSandbagWall(factionColor) {
         const fc = this._factionColor(factionColor);
         const group = new THREE.Group();
