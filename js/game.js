@@ -136,6 +136,8 @@ class GameState {
             { faction: aiFaction.faction, money: this.matchConfig.startingCredits, buildings: [], units: [], color: aiFaction.color, isAI: true, lowPowerNotified: false, startingBaseGranted: false }
         ];
         this.currentPlayer = 0;
+        this.matchStats = this.players.map(() => this.createEmptyPlayerStats());
+        this.matchResult = null;
 
         // Selection
         this.selected = [];
@@ -198,6 +200,149 @@ class GameState {
             vEl.textContent = `v${v} (${h})`;
         }
         requestAnimationFrame(t => this.loop(t));
+    }
+
+    createEmptyPlayerStats() {
+        return {
+            unitsBuilt: 0,
+            unitsLost: 0,
+            unitsKilled: 0,
+            buildingsConstructed: 0,
+            buildingsLost: 0,
+            buildingsDestroyed: 0,
+            oreDelivered: 0,
+        };
+    }
+
+    getPlayerStats(owner) {
+        if (!this.matchStats[owner]) this.matchStats[owner] = this.createEmptyPlayerStats();
+        return this.matchStats[owner];
+    }
+
+    recordUnitBuilt(owner) {
+        this.getPlayerStats(owner).unitsBuilt += 1;
+    }
+
+    recordBuildingConstructed(owner) {
+        this.getPlayerStats(owner).buildingsConstructed += 1;
+    }
+
+    recordOreDelivered(owner, amount) {
+        this.getPlayerStats(owner).oreDelivered += amount;
+    }
+
+    markUnitDestroyed(unit, attackerOwner = null) {
+        if (!unit || unit._lossRecorded) return;
+        unit._lossRecorded = true;
+        unit.state = 'dead';
+        this.getPlayerStats(unit.owner).unitsLost += 1;
+        if (Number.isInteger(attackerOwner) && attackerOwner !== unit.owner) {
+            this.getPlayerStats(attackerOwner).unitsKilled += 1;
+        }
+    }
+
+    markBuildingDestroyed(building, attackerOwner = null, options = {}) {
+        if (!building || building._lossRecorded) return;
+        const { countAsLoss = true } = options;
+        building._lossRecorded = true;
+        if (countAsLoss) {
+            this.getPlayerStats(building.owner).buildingsLost += 1;
+            if (Number.isInteger(attackerOwner) && attackerOwner !== building.owner) {
+                this.getPlayerStats(attackerOwner).buildingsDestroyed += 1;
+            }
+        }
+    }
+
+    hasLiveMCV(player) {
+        return player.units.some(unit => unit.type === 'mcv' && unit.state !== 'dead' && unit.hp > 0);
+    }
+
+    hasLivingBase(player) {
+        return player.buildings.some(building => building.hp > 0) || this.hasLiveMCV(player);
+    }
+
+    getRemainingForces(player) {
+        return {
+            buildings: player.buildings.filter(building => building.hp > 0).length,
+            units: player.units.filter(unit => unit.state !== 'dead' && unit.hp > 0).length,
+        };
+    }
+
+    formatDuration(ms) {
+        const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+
+    renderMatchSummary() {
+        const overlay = document.getElementById('match-summary-overlay');
+        const result = this.matchResult;
+        if (!overlay || !result) return;
+
+        const title = document.getElementById('match-summary-title');
+        const duration = document.getElementById('match-summary-duration');
+        const reason = document.getElementById('match-summary-reason');
+        const stats = document.getElementById('match-summary-stats');
+        const playerStats = this.getPlayerStats(0);
+        const enemyStats = this.getPlayerStats(1);
+        const playerForces = this.getRemainingForces(this.players[0]);
+        const enemyForces = this.getRemainingForces(this.players[1]);
+
+        if (title) title.textContent = result.playerWon ? 'Victory' : 'Defeat';
+        if (duration) duration.textContent = `Duration ${this.formatDuration(result.durationMs)}`;
+        if (reason) reason.textContent = result.summaryText;
+        if (stats) {
+            stats.innerHTML = `
+                <div class="summary-card overview">
+                    <h3>Outcome</h3>
+                    <div class="summary-line highlight"><span>Result</span><span>${result.playerWon ? 'Enemy eliminated' : 'Base lost'}</span></div>
+                    <div class="summary-line"><span>Player base status</span><span>${playerForces.buildings} buildings / ${playerForces.units} units</span></div>
+                    <div class="summary-line"><span>Enemy base status</span><span>${enemyForces.buildings} buildings / ${enemyForces.units} units</span></div>
+                </div>
+                <div class="summary-card player">
+                    <h3>Your Forces</h3>
+                    <div class="summary-line"><span>Units built</span><span>${playerStats.unitsBuilt}</span></div>
+                    <div class="summary-line"><span>Units lost</span><span>${playerStats.unitsLost}</span></div>
+                    <div class="summary-line"><span>Units killed</span><span>${playerStats.unitsKilled}</span></div>
+                    <div class="summary-line"><span>Buildings deployed</span><span>${playerStats.buildingsConstructed}</span></div>
+                    <div class="summary-line"><span>Buildings lost</span><span>${playerStats.buildingsLost}</span></div>
+                    <div class="summary-line"><span>Buildings destroyed</span><span>${playerStats.buildingsDestroyed}</span></div>
+                    <div class="summary-line"><span>Ore delivered</span><span>$${Math.floor(playerStats.oreDelivered)}</span></div>
+                </div>
+                <div class="summary-card enemy">
+                    <h3>Enemy Forces</h3>
+                    <div class="summary-line"><span>Units built</span><span>${enemyStats.unitsBuilt}</span></div>
+                    <div class="summary-line"><span>Units lost</span><span>${enemyStats.unitsLost}</span></div>
+                    <div class="summary-line"><span>Units killed</span><span>${enemyStats.unitsKilled}</span></div>
+                    <div class="summary-line"><span>Buildings deployed</span><span>${enemyStats.buildingsConstructed}</span></div>
+                    <div class="summary-line"><span>Buildings lost</span><span>${enemyStats.buildingsLost}</span></div>
+                    <div class="summary-line"><span>Buildings destroyed</span><span>${enemyStats.buildingsDestroyed}</span></div>
+                    <div class="summary-line"><span>Ore delivered</span><span>$${Math.floor(enemyStats.oreDelivered)}</span></div>
+                </div>
+            `;
+        }
+
+        overlay.classList.remove('hidden');
+    }
+
+    finishMatch(losingPlayerIndex) {
+        if (this.gameOver) return;
+        this.gameOver = true;
+        const playerWon = losingPlayerIndex !== 0;
+        const hasFallbackMCV = this.hasLiveMCV(this.players[losingPlayerIndex]);
+        const loserName = losingPlayerIndex === 0 ? 'Your' : 'Enemy';
+        const summaryText = hasFallbackMCV
+            ? `${loserName} field command was broken after its base collapsed.`
+            : `${loserName} construction network is gone — stray units no longer keep the match alive.`;
+        this.matchResult = {
+            playerWon,
+            losingPlayerIndex,
+            durationMs: this.elapsedMs,
+            summaryText,
+        };
+        this.renderMatchSummary();
+        this.eva(playerWon ? 'VICTORY! Enemy base neutralized.' : 'DEFEAT! Your construction network has collapsed.');
     }
 
     resize() {
@@ -456,6 +601,7 @@ class GameState {
         const player = this.players[unit.owner];
         const conyard = this.createBuilding('constructionYard', position.tx, position.ty, unit.owner);
         player.buildings.push(conyard);
+        this.recordBuildingConstructed(unit.owner);
         player.units = player.units.filter(existing => existing !== unit);
         if (this.renderer3d?.unitMeshes?.has(unit)) {
             this.renderer3d.removeUnit(unit);
@@ -1041,6 +1187,7 @@ class GameState {
         const player = this.players[building.owner];
         const refund = Math.max(100, Math.floor((BUILD_TYPES[building.type]?.cost || 0) * 0.5 * Math.max(0.3, building.hp / building.maxHp)));
         player.money += refund;
+        building._removedByOwner = true;
         building.hp = 0;
         building.repairing = false;
         building.training = null;
@@ -1060,6 +1207,7 @@ class GameState {
         const totalCost = BUILD_TYPES[building.type]?.cost || 0;
         const refund = Math.max(0, Math.floor(totalCost * (1 - building.buildProgress)));
         player.money += refund;
+        building._removedByOwner = true;
         building.hp = 0;
         building.training = null;
         building.trainQueue = [];
@@ -1107,6 +1255,7 @@ class GameState {
         const exit = building.rallyPoint || { x: building.tx + building.size + 1, y: building.ty + Math.floor(building.size / 2) };
         const unit = this.createUnit(unitType, exit.x, exit.y, building.owner);
         player.units.push(unit);
+        this.recordUnitBuilt(building.owner);
         if (unit.role === 'harvester') this.assignHarvesterJob(unit, player);
     }
 
@@ -1145,7 +1294,7 @@ class GameState {
         unit.attackTarget = null;
         unit.target = null;
         unit.path = null;
-        unit.state = 'dead';
+        this.markUnitDestroyed(unit);
         unit.deadTimer = 0;
         if (unit.owner === this.currentPlayer) {
             this.eva(`Engineer captured ${this.getDisplayName(building.type)}.`);
@@ -1388,6 +1537,7 @@ class GameState {
                 const amount = Math.min(unit.unloadRate, unit.cargo);
                 unit.cargo -= amount;
                 player.money += amount;
+                this.recordOreDelivered(unit.owner, amount);
             }
             if (unit.cargo <= 0) {
                 unit.cargo = 0;
@@ -1574,6 +1724,7 @@ class GameState {
                     if (b.buildProgress >= 1) {
                         b.buildProgress = 1;
                         b.built = true;
+                        this.recordBuildingConstructed(b.owner);
                         if (b.owner === this.currentPlayer) {
                             this.eva('Construction complete.');
                             this.updateUI();
@@ -1645,6 +1796,7 @@ class GameState {
                 }
 
                 if (b.hp <= 0) {
+                    this.markBuildingDestroyed(b, b._lastAttackerOwner ?? null, { countAsLoss: !b._removedByOwner });
                     this.effects.push({ type: 'explosion', x: b.tx + b.size / 2, y: b.ty + b.size / 2, frame: 0, timer: 0, big: true });
                     this.renderer3d.removeBuilding(b);
                 }
@@ -1978,7 +2130,7 @@ class GameState {
                             // Record who attacked this unit (for retaliation)
                             eu._lastAttackerOwner = p.owner;
                             eu._lastHitTime = Date.now();
-                            if (eu.hp <= 0) eu.state = 'dead';
+                            if (eu.hp <= 0) this.markUnitDestroyed(eu, p.owner);
                         }
                     }
                     for (const eb of this.players[pi2].buildings) {
@@ -1989,6 +2141,7 @@ class GameState {
                             const directDamage = this.getDamageAgainstTarget(p.damage, p.damageProfile, eb);
                             const dmg = (eb === p.target) ? directDamage : Math.max(1, Math.floor(directDamage * 0.5));
                             eb.hp -= dmg;
+                            eb._lastAttackerOwner = p.owner;
                         }
                     }
                 }
@@ -2367,14 +2520,9 @@ class GameState {
 
         for (let pi = 0; pi < this.players.length; pi++) {
             const p = this.players[pi];
-            const alive = p.buildings.length > 0 || p.units.some(u => u.state !== 'dead');
+            const alive = this.hasLivingBase(p);
             if (!alive) {
-                this.gameOver = true;
-                if (pi === 0) {
-                    this.eva('DEFEAT! Your base has been destroyed.');
-                } else {
-                    this.eva('VICTORY! Enemy eliminated!');
-                }
+                this.finishMatch(pi);
                 return;
             }
         }
@@ -2997,6 +3145,23 @@ class GameState {
     }
 }
 
+function bindMatchSummaryControls() {
+    const overlay = document.getElementById('match-summary-overlay');
+    const restartButton = document.getElementById('match-summary-restart');
+    const setupButton = document.getElementById('match-summary-setup');
+    if (!overlay || !restartButton || !setupButton) return;
+
+    restartButton.addEventListener('click', () => {
+        sessionStorage.setItem(MATCH_PANEL_COLLAPSED_KEY, '1');
+        window.location.reload();
+    });
+
+    setupButton.addEventListener('click', () => {
+        sessionStorage.removeItem(MATCH_PANEL_COLLAPSED_KEY);
+        window.location.reload();
+    });
+}
+
 function bindSkirmishSetupPanel() {
     const overlay = document.getElementById('skirmish-setup-overlay');
     const startButton = document.getElementById('skirmish-start-button');
@@ -3049,5 +3214,6 @@ window.addEventListener('DOMContentLoaded', () => {
     const storedConfig = getStoredMatchConfig();
     persistMatchConfig(storedConfig);
     bindSkirmishSetupPanel();
+    bindMatchSummaryControls();
     window.game = new GameState(storedConfig);
 });

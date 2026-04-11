@@ -41,10 +41,10 @@
 - [x] MCV（移动基地车）与 deploy 机制
 - [x] 以 MCV / Construction Yard 为核心的正式开局流程
 - [x] 正式的遭遇战规则参数（starting credits、short/medium/long game）
-- [ ] 多出生点 / 真正的 spawn logic
+- [x] 多出生点 / 真正的 spawn logic
 - [~] 可配置的 skirmish 选项（资金、地图、AI 数量、阵营）
-- [ ] 更完整的失败条件（仅靠剩余单位苟活不够 RA2）
-- [ ] 胜利结算界面 / 战后统计
+- [x] 更完整的失败条件（仅靠剩余单位苟活不够 RA2）
+- [x] 胜利结算界面 / 战后统计
 
 ## B2. 阵营与科技树
 - [ ] 真正的 Allied / Soviet 双阵营分化

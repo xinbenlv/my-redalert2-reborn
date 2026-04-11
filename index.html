@@ -49,6 +49,21 @@
         </div>
         <button id="skirmish-start-button">Launch Skirmish</button>
     </div>
+    <div id="match-summary-overlay" class="hidden" aria-live="polite">
+        <div class="summary-header">
+            <div>
+                <div class="summary-kicker">BATTLE REPORT</div>
+                <h2 id="match-summary-title">Victory</h2>
+            </div>
+            <div id="match-summary-duration"></div>
+        </div>
+        <div id="match-summary-reason"></div>
+        <div id="match-summary-stats"></div>
+        <div class="summary-actions">
+            <button id="match-summary-restart">Restart Skirmish</button>
+            <button id="match-summary-setup">Change Setup</button>
+        </div>
+    </div>
     <div id="ui-overlay">
         <div id="top-bar">
             <div id="money-display">CREDITS <span id="money">5000</span></div>
