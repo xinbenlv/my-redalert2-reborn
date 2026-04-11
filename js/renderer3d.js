@@ -231,6 +231,7 @@ class Renderer3D {
         else if (building.type === 'warFactory') mesh = this.models.createWarFactory(factionColor);
         else if (building.type === 'battleLab') mesh = this.models.createBattleLab(factionColor);
         else if (building.type === 'airfield') mesh = this.models.createAirfield(factionColor);
+        else if (building.type === 'serviceDepot') mesh = this.models.createServiceDepot(factionColor);
         else if (building.type === 'pillbox') mesh = this.models.createPillbox(factionColor);
         else if (building.type === 'sentryGun') mesh = this.models.createSentryGun(factionColor);
         else if (building.type === 'battleBunker') mesh = this.models.createBattleBunker(factionColor);
@@ -511,6 +512,7 @@ class Renderer3D {
             else if (type === 'radarDome') this._placementPreview = this.models.createRadarDome(factionColor);
             else if (type === 'warFactory') this._placementPreview = this.models.createWarFactory(factionColor);
             else if (type === 'battleLab') this._placementPreview = this.models.createBattleLab(factionColor);
+            else if (type === 'serviceDepot') this._placementPreview = this.models.createServiceDepot(factionColor);
             else if (type === 'pillbox') this._placementPreview = this.models.createPillbox(factionColor);
             else if (type === 'sentryGun') this._placementPreview = this.models.createSentryGun(factionColor);
             else if (type === 'sandbagWall') this._placementPreview = this.models.createSandbagWall(factionColor);
@@ -679,6 +681,7 @@ class Renderer3D {
         else if (type === 'warFactory') model = this.models.createWarFactory(factionColor);
         else if (type === 'battleLab') model = this.models.createBattleLab(factionColor);
         else if (type === 'airfield') model = this.models.createAirfield(factionColor);
+        else if (type === 'serviceDepot') model = this.models.createServiceDepot(factionColor);
         else if (type === 'pillbox') model = this.models.createPillbox(factionColor);
         else if (type === 'sentryGun') model = this.models.createSentryGun(factionColor);
         else if (type === 'battleBunker') model = this.models.createBattleBunker(factionColor);

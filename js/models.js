@@ -1716,6 +1716,87 @@ class ModelFactory {
         return group;
     }
 
+    createServiceDepot(factionColor) {
+        const fc = this._factionColor(factionColor);
+        const group = new THREE.Group();
+
+        const slab = new THREE.Mesh(
+            new THREE.BoxGeometry(2.8, 0.08, 2.8),
+            this._mat(0x7b8087, { roughness: 0.9, metalness: 0.08 })
+        );
+        slab.position.y = 0.04;
+        slab.receiveShadow = true;
+        group.add(slab);
+
+        const pad = new THREE.Mesh(
+            new THREE.BoxGeometry(1.7, 0.03, 1.6),
+            this._mat(0x2d3136, { roughness: 0.95, metalness: 0.05 })
+        );
+        pad.position.y = 0.09;
+        group.add(pad);
+
+        const bay = new THREE.Mesh(
+            new THREE.BoxGeometry(0.95, 0.55, 0.8),
+            this._mat(0x636a73, { roughness: 0.58, metalness: 0.24 })
+        );
+        bay.position.set(0.75, 0.33, -0.72);
+        bay.castShadow = true;
+        group.add(bay);
+
+        const canopy = new THREE.Mesh(
+            new THREE.BoxGeometry(1.2, 0.08, 1.35),
+            this._mat(0x4f5660, { roughness: 0.48, metalness: 0.32 })
+        );
+        canopy.position.set(-0.3, 0.66, 0.15);
+        canopy.castShadow = true;
+        group.add(canopy);
+
+        for (const x of [-0.8, 0.2]) {
+            for (const z of [-0.4, 0.7]) {
+                const pillar = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.09, 0.58, 0.09),
+                    this._mat(0x454b53, { roughness: 0.5, metalness: 0.34 })
+                );
+                pillar.position.set(x, 0.33, z);
+                pillar.castShadow = true;
+                group.add(pillar);
+            }
+        }
+
+        const gantry = new THREE.Mesh(
+            new THREE.BoxGeometry(0.18, 0.42, 1.05),
+            this._mat(fc, { roughness: 0.42, metalness: 0.28, emissive: fc, emissiveIntensity: 0.08 })
+        );
+        gantry.position.set(-0.74, 0.46, 0.14);
+        gantry.castShadow = true;
+        group.add(gantry);
+
+        const hoist = new THREE.Mesh(
+            new THREE.BoxGeometry(0.16, 0.16, 0.16),
+            this._mat(0xf5c96c, { roughness: 0.45, metalness: 0.18 })
+        );
+        hoist.position.set(-0.62, 0.46, 0.14);
+        group.add(hoist);
+
+        const stripe = new THREE.Mesh(
+            new THREE.BoxGeometry(1.45, 0.02, 0.16),
+            this._mat(fc, { roughness: 0.45, metalness: 0.2 })
+        );
+        stripe.position.set(0, 0.11, 0.62);
+        group.add(stripe);
+
+        const beacon = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.05, 0.05, 0.15, 10),
+            this._mat(0x66d7ff, { emissive: 0x66d7ff, emissiveIntensity: 0.65, roughness: 0.2 })
+        );
+        beacon.position.set(1.05, 0.2, 0.95);
+        group.add(beacon);
+
+        group.userData.modelType = 'serviceDepot';
+        group.userData.factionColor = fc;
+        return group;
+    }
+
     createHarrier(factionColor) {
         const fc = this._factionColor(factionColor);
         const group = new THREE.Group();

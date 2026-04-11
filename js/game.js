@@ -49,6 +49,7 @@ const VETERANCY_BONUSES = {
     elite: { hp: 1.28, damage: 1.3, fireRate: 0.8 },
 };
 const TRANSPORTABLE_INFANTRY_TYPES = new Set(['soldier', 'rocketInfantry', 'flakTrooper', 'engineer']);
+const NON_VEHICLE_ROLES = new Set(['infantry', 'anti-armor infantry', 'anti-air infantry', 'engineer']);
 
 function normalizeMatchConfig(config = {}) {
     const startingCredits = Number(config.startingCredits);
@@ -1928,6 +1929,30 @@ class GameState {
         return { x: entity.x, y: entity.y };
     }
 
+    canServiceDepotRepairUnit(unit) {
+        return !!(unit && unit.tx === undefined && unit.state !== 'dead' && !this.isAirUnit(unit) && !NON_VEHICLE_ROLES.has(unit.role));
+    }
+
+    getServiceDepotRepairState(depot) {
+        if (!depot || depot.type !== 'serviceDepot' || !depot.built || depot.hp <= 0) return null;
+        const owner = this.players[depot.owner];
+        if (!owner) return null;
+        const anchor = this.getEntityAnchor(depot);
+        if (!anchor) return null;
+        const repairRadius = BUILD_TYPES.serviceDepot.repairRadius || 1.1;
+        const candidate = owner.units.find(unit => this.canServiceDepotRepairUnit(unit)
+            && unit.hp > 0
+            && unit.hp < unit.maxHp
+            && (unit.state === 'idle' || unit.state === 'moving')
+            && Math.hypot(unit.x - anchor.x, unit.y - anchor.y) <= repairRadius);
+        if (!candidate) return null;
+        return {
+            unit: candidate,
+            label: this.getDisplayName(candidate.type),
+            enoughFunds: owner.money >= (BUILD_TYPES.serviceDepot.repairCost || 0)
+        };
+    }
+
     getSelectedRallyOverlay() {
         const building = this.getPrimarySelectedBuilding();
         if (!building || !this.canSetRallyPoint(building)) return null;
@@ -2469,6 +2494,21 @@ class GameState {
                         b.repairing = false;
                         if (b.owner === this.currentPlayer) this.eva(`${this.getDisplayName(b.type)} fully repaired.`);
                     }
+                }
+
+                if (b.type === 'serviceDepot' && b.built && b.hp > 0) {
+                    const repairState = this.getServiceDepotRepairState(b);
+                    b.repairingUnit = repairState?.unit || null;
+                    if (repairState?.unit) {
+                        const repairCost = dt * (def.repairCost || 0.03);
+                        const repairAmount = dt * (def.repairRate || 0.05);
+                        if (p.money >= repairCost) {
+                            p.money -= repairCost;
+                            repairState.unit.hp = Math.min(repairState.unit.maxHp, repairState.unit.hp + repairAmount);
+                        }
+                    }
+                } else {
+                    b.repairingUnit = null;
                 }
 
                 if (def.production && b.built && b.hp > 0) {
@@ -3907,7 +3947,7 @@ class GameState {
         const p = this.players[this.currentPlayer];
 
         if (activeTab === 'buildings') {
-            ['powerPlant', 'advancedPowerPlant', 'refinery', 'barracks', 'radarDome', 'warFactory', 'airfield', 'battleLab', 'pillbox', 'sentryGun', 'battleBunker', 'sandbagWall'].forEach(type => {
+            ['powerPlant', 'advancedPowerPlant', 'refinery', 'serviceDepot', 'barracks', 'radarDome', 'warFactory', 'airfield', 'battleLab', 'pillbox', 'sentryGun', 'battleBunker', 'sandbagWall'].forEach(type => {
                 const def = BUILD_TYPES[type];
                 this.addBuildItem(container, type, def.name, def.cost, def.description, false);
             });
@@ -4048,6 +4088,12 @@ class GameState {
                     }
                 } else {
                     extras.push(`DMG: ${s.damage} | RNG: ${s.range}`);
+                    if (this.canServiceDepotRepairUnit(s)) {
+                        const depot = this.players[s.owner]?.buildings.find(building => building.type === 'serviceDepot' && building.repairingUnit === s);
+                        if (depot) {
+                            extras.push(`SERVICE DEPOT: ${Math.round(depot.tx + depot.size / 2 - 0.5)}, ${Math.round(depot.ty + depot.size / 2 - 0.5)}`);
+                        }
+                    }
                     if (s.canAttackAir && s.attackTarget && this.isAirUnit(s.attackTarget)) {
                         extras.push(`AA LOCK: ${this.getDisplayName(s.attackTarget.type)}`);
                     }
@@ -4078,6 +4124,10 @@ class GameState {
                 if (def.providesRadar) statusBits.push(this.hasOperationalRadar(this.players[s.owner]) ? 'Radar online' : 'Radar offline');
                 if (this.isDefensiveBuilding(s)) statusBits.push(`DMG ${s.damage} | RNG ${s.range}`);
                 if (this.isGarrisonBuilding(s)) statusBits.push(`GARRISON ${s.garrisonedUnits.length}/${s.garrisonCapacity}`);
+                if (s.type === 'serviceDepot') {
+                    const repairState = this.getServiceDepotRepairState(s);
+                    statusBits.push(repairState ? `Servicing: ${repairState.label}` : 'Pad idle');
+                }
                 if (s.canAttackAir && s.attackTarget && this.isAirUnit(s.attackTarget)) statusBits.push(`AA LOCK: ${this.getDisplayName(s.attackTarget.type)}`);
                 if (this.isDefensiveBuilding(s) && POWER_SYSTEM.isLowPower(this.players[s.owner])) statusBits.push('Weapons offline');
                 if (s.repairing) statusBits.push('Repairing');

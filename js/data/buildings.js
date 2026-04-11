@@ -51,6 +51,21 @@ window.BUILD_TYPES = {
         description: 'Accepts ore from harvesters.',
         prerequisites: ['constructionYard', 'powerPlant']
     },
+    serviceDepot: {
+        name: 'Service Depot',
+        cost: 900,
+        buildTime: 7000,
+        hp: 900,
+        sight: 5,
+        size: 3,
+        powerSupply: 0,
+        powerDrain: 20,
+        repairRadius: 1.15,
+        repairRate: 0.055,
+        repairCost: 0.035,
+        description: 'Field garage that repairs friendly ground vehicles parked on its service pad.',
+        prerequisites: ['constructionYard', 'powerPlant', 'refinery', 'warFactory']
+    },
     barracks: {
         name: 'Barracks',
         cost: 600,

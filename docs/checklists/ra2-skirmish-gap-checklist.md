@@ -61,7 +61,7 @@
 - [x] Power Plant
 - [x] Advanced Power Plant
 - [x] Refinery
-- [ ] Service Depot
+- [x] Service Depot
 - [ ] Ore Purifier / economy amplifiers（若采用 Yuri/扩展思路可选）
 - [ ] 真正的电网 / 建筑停摆层级效果细化
 
@@ -135,7 +135,7 @@
 - [ ] 不同资源价值
 - [ ] 采矿动画 / 采矿反馈更明显
 - [ ] 矿场耗尽后的地图观感变化加强
-- [ ] Service Depot 维修载具
+- [x] Service Depot 维修载具
 - [ ] 更真实的建造与花费节奏平衡
 
 ## B6. 建造与生产体验
