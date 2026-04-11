@@ -25,7 +25,7 @@
 - [x] 电力系统（产电 / 耗电 / low power / radar offline）
 - [x] 前置建筑（prerequisites）
 - [x] 生产队列
-- [x] Repair / Sell / Rally Point 控制
+- [ ] Repair / Sell / Rally Point 控制
 
 ### A3. 基础体验
 - [x] 版本号和 git hash 显示
