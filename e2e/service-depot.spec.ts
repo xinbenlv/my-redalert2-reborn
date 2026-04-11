@@ -15,12 +15,16 @@ test('service depot unlocks after war factory and repairs damaged vehicles on th
       labels,
       className: card?.className || '',
       lockedText: card?.querySelector('.item-status')?.textContent || '',
+      techChain: card?.querySelector('.item-tech-chain')?.textContent || '',
+      lockedReason: card?.getAttribute('data-locked-reason') || '',
     };
   });
 
   expect(lockedState.labels).toContain('Service Depot');
   expect(lockedState.className).toContain('locked');
-  expect(lockedState.lockedText).toContain('War Factory');
+  expect(lockedState.lockedText).toContain('Next: Power Plant');
+  expect(lockedState.techChain).toContain('War Factory');
+  expect(lockedState.lockedReason).toContain('War Factory');
 
   const repairState = await page.evaluate(() => {
     const game = (window as any).game;

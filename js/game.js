@@ -1403,9 +1403,34 @@ class GameState {
         return BUILD_TYPES[type]?.name || UNIT_TYPES[type]?.name || type;
     }
 
+    getOwnedBuildingTypes(player) {
+        return new Set(player.buildings.filter(building => building.hp > 0 && building.built).map(building => building.type));
+    }
+
+    getPrerequisiteStatus(player, prerequisites) {
+        const owned = this.getOwnedBuildingTypes(player);
+        return (prerequisites || []).map(req => ({
+            type: req,
+            name: this.getDisplayName(req),
+            satisfied: owned.has(req)
+        }));
+    }
+
     getMissingPrerequisites(player, prerequisites) {
-        const owned = new Set(player.buildings.filter(b => b.hp > 0 && b.built).map(b => b.type));
-        return (prerequisites || []).filter(req => !owned.has(req)).map(req => BUILD_TYPES[req]?.name || req);
+        return this.getPrerequisiteStatus(player, prerequisites)
+            .filter(req => !req.satisfied)
+            .map(req => req.name);
+    }
+
+    getPrerequisiteSummary(player, prerequisites) {
+        const status = this.getPrerequisiteStatus(player, prerequisites);
+        const missing = status.filter(req => !req.satisfied);
+        return {
+            status,
+            missing: missing.map(req => req.name),
+            nextUnlock: missing[0]?.name || null,
+            chainLabel: status.map(req => `${req.satisfied ? '✓' : '✗'} ${req.name}`).join(' → ')
+        };
     }
 
     canUnitReceiveCommand(unit) {
@@ -4249,11 +4274,15 @@ class GameState {
     addBuildItem(container, type, name, cost, desc, isUnit = false) {
         const p = this.players[this.currentPlayer];
         const sourceDef = isUnit ? UNIT_TYPES[type] : BUILD_TYPES[type];
+        const prereqSummary = this.getPrerequisiteSummary(p, sourceDef.prerequisites || []);
+        const { missing, nextUnlock, chainLabel } = prereqSummary;
         const div = document.createElement('div');
-        const missing = this.getMissingPrerequisites(p, sourceDef.prerequisites || []);
         const locked = missing.length > 0;
         const affordable = p.money >= cost;
         div.className = 'build-item' + (!affordable ? ' disabled' : '') + (locked ? ' locked' : '');
+        div.dataset.type = type;
+        div.dataset.lockedReason = locked ? missing.join(', ') : '';
+        div.title = chainLabel || `${name} ready`;
 
         const iconSize = 80;
         const iconCanvas = this.renderer3d.renderBuildIcon(type, p.color, iconSize);
@@ -4281,10 +4310,22 @@ class GameState {
         descEl.textContent = desc;
         div.appendChild(descEl);
 
+        const techEl = document.createElement('div');
+        techEl.className = 'item-tech-chain';
+        techEl.textContent = chainLabel || 'No tech prerequisites';
+        div.appendChild(techEl);
+
         const statusEl = document.createElement('div');
         statusEl.className = 'item-status';
-        statusEl.textContent = locked ? `Need ${missing.join(', ')}` : (!affordable ? 'Insufficient funds' : '');
-        if (statusEl.textContent) div.appendChild(statusEl);
+        if (locked) {
+            statusEl.textContent = `Next: ${nextUnlock} • Missing ${missing.length}`;
+        } else if (!affordable) {
+            statusEl.textContent = 'Insufficient funds';
+        } else {
+            statusEl.textContent = chainLabel ? 'Tech ready' : 'Ready';
+            statusEl.classList.add('ready');
+        }
+        div.appendChild(statusEl);
 
         if (isUnit) {
             const totalQueued = this._getTotalTrainQueue(p, type);
@@ -4298,7 +4339,10 @@ class GameState {
         }
 
         div.addEventListener('click', () => {
-            if (locked) { this.eva(`Prerequisite missing: ${missing.join(', ')}`); return; }
+            if (locked) {
+                this.eva(`${name} locked. Next: ${nextUnlock}. Missing: ${missing.join(', ')}.`);
+                return;
+            }
             if (!affordable) { this.eva('Insufficient funds.'); return; }
             if (isUnit) {
                 const buildings = this.getProductionBuildings(p, type);
