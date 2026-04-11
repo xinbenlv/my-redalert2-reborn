@@ -85,6 +85,10 @@ npm run deploy:vercel:prod
 
 `build.sh` now fails hard if neither `SOURCE_GIT_SHA` nor `VERCEL_GIT_COMMIT_SHA` is present. That is intentional: shipping `dev` as the version hash is a broken build, not an acceptable fallback.
 
+## Planning Docs
+
+- [RA2 遭遇战差距总清单](docs/checklists/ra2-skirmish-gap-checklist.md)
+
 ## License
 
 MIT
