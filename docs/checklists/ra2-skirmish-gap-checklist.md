@@ -167,7 +167,7 @@
 ## B8. 单位行为与微操
 - [x] 右键移动 / 攻击
 - [x] control groups
-- [ ] stance（guard / aggressive / hold ground）
+- [x] stance（guard / aggressive / hold ground，已补选择面板按钮 + G/A/H 快捷键，并让 Guard / Aggressive / Hold Ground 真正影响索敌半径与追击 leash）
 - [ ] force move / force fire / guard 等命令
 - [~] scatter / stop 命令（已补 Stop / Scatter / Patrol 选择面板按钮与 S / X / P 快捷键；更完整的 force-move / 阵型微操仍未做）
 - [ ] waypoints

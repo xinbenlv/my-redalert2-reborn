@@ -126,6 +126,12 @@ const VETERANCY_BONUSES = {
 };
 const TRANSPORTABLE_INFANTRY_TYPES = new Set(['soldier', 'rocketInfantry', 'flakTrooper', 'engineer']);
 const NON_VEHICLE_ROLES = new Set(['infantry', 'anti-armor infantry', 'anti-air infantry', 'engineer', 'attack dog']);
+const UNIT_STANCE_ORDER = ['guard', 'aggressive', 'hold'];
+const UNIT_STANCE_PROFILES = {
+    guard: { id: 'guard', label: 'Guard', hotkey: 'G', autoAcquireBonus: 1.5, movingAcquireRadius: 0, chaseLeash: 5.5 },
+    aggressive: { id: 'aggressive', label: 'Aggressive', hotkey: 'A', autoAcquireBonus: 3, movingAcquireRadius: 1.2, chaseLeash: Infinity },
+    hold: { id: 'hold', label: 'Hold Ground', hotkey: 'H', autoAcquireBonus: 0.5, movingAcquireRadius: 0, chaseLeash: 0 },
+};
 
 function normalizeMatchConfig(config = {}) {
     const startingCredits = Number(config.startingCredits);
@@ -844,7 +850,9 @@ class GameState {
             isStartingMCV: false,
             autoDeployAt: null,
             veterancyXp: 0,
-            veterancyRank: 'rookie'
+            veterancyRank: 'rookie',
+            stance: 'guard',
+            stanceAnchor: { x: tx, y: ty }
         };
     }
 
@@ -1076,6 +1084,18 @@ class GameState {
                 return;
             }
             if (lowerKey === 'p' && this.togglePatrolMode()) {
+                e.preventDefault();
+                return;
+            }
+            if (lowerKey === 'g' && this.setSelectedUnitStance('guard')) {
+                e.preventDefault();
+                return;
+            }
+            if (lowerKey === 'a' && this.setSelectedUnitStance('aggressive')) {
+                e.preventDefault();
+                return;
+            }
+            if (lowerKey === 'h' && this.setSelectedUnitStance('hold')) {
                 e.preventDefault();
                 return;
             }
@@ -1679,6 +1699,85 @@ class GameState {
         return this.selected.filter(unit => unit?.tx === undefined && this.canUnitReceiveCommand(unit));
     }
 
+    getUnitStanceProfile(unit) {
+        const stance = UNIT_STANCE_PROFILES[unit?.stance] ? unit.stance : 'guard';
+        return UNIT_STANCE_PROFILES[stance];
+    }
+
+    getUnitStanceLabel(unit) {
+        return this.getUnitStanceProfile(unit).label;
+    }
+
+    setUnitStance(unit, stance, options = {}) {
+        if (!this.canUnitReceiveCommand(unit) || !UNIT_STANCE_PROFILES[stance]) return false;
+        unit.stance = stance;
+        if (!unit.stanceAnchor || options.resetAnchor) {
+            unit.stanceAnchor = { x: unit.x, y: unit.y };
+        }
+        return true;
+    }
+
+    setSelectedUnitStance(stance) {
+        const units = this.getSelectedCommandableUnits();
+        if (!units.length || !UNIT_STANCE_PROFILES[stance]) return false;
+        let changed = 0;
+        for (const unit of units) {
+            changed += this.setUnitStance(unit, stance, { resetAnchor: !unit.stanceAnchor }) ? 1 : 0;
+        }
+        if (!changed) return false;
+        const label = UNIT_STANCE_PROFILES[stance].label;
+        this.eva(changed === 1 ? `${this.getDisplayName(units[0].type)} stance set to ${label}.` : `${changed} units set to ${label}.`);
+        this.updateSelectionInfo();
+        return true;
+    }
+
+    getUnitAutoAcquireRadius(unit, mode = 'idle') {
+        const profile = this.getUnitStanceProfile(unit);
+        const sight = unit?.sight || 0;
+        const range = unit?.range || 0;
+        if (profile.id === 'hold') return range + 0.5;
+        if (mode === 'moving') return Math.max(range + 0.2, Math.min(sight + profile.movingAcquireRadius, range + 1.8 + profile.autoAcquireBonus));
+        return Math.max(range + 0.75, Math.min(sight + profile.autoAcquireBonus, range + 2.5 + profile.autoAcquireBonus));
+    }
+
+    shouldUnitKeepPursuing(unit, target) {
+        if (!unit || !target) return false;
+        const profile = this.getUnitStanceProfile(unit);
+        if (profile.chaseLeash === Infinity) return true;
+        const anchor = unit.stanceAnchor || { x: unit.x, y: unit.y };
+        const targetAnchor = this.getEntityAnchor(target);
+        if (!targetAnchor) return false;
+        const chaseDistance = Math.hypot(anchor.x - targetAnchor.x, anchor.y - targetAnchor.y);
+        if (profile.id === 'hold') return chaseDistance <= unit.range + 0.4;
+        return chaseDistance <= unit.range + profile.chaseLeash;
+    }
+
+    resumeUnitPostEngagement(unit) {
+        if (!unit) return false;
+        if (unit.patrolRoute?.length >= 2) return this.advancePatrolRoute(unit);
+        if (unit._savedTarget) {
+            unit.target = unit._savedTarget;
+            unit.path = unit._savedPath;
+            unit.pathIdx = unit._savedPathIdx || 0;
+            unit._savedTarget = null;
+            unit._savedPath = null;
+            unit._savedPathIdx = 0;
+            unit.state = 'moving';
+            return true;
+        }
+        const anchor = unit.stanceAnchor;
+        const profile = this.getUnitStanceProfile(unit);
+        if (anchor && profile.id !== 'aggressive' && Math.hypot(unit.x - anchor.x, unit.y - anchor.y) > 0.35) {
+            this.issueMoveOrder(unit, anchor.x, anchor.y, 'moving');
+            return true;
+        }
+        unit.state = 'idle';
+        unit.target = null;
+        unit.path = null;
+        unit.pathIdx = 0;
+        return false;
+    }
+
     clearUnitOrders(unit) {
         if (!unit || unit.state === 'dead' || unit.state === 'loaded') return false;
         if (unit.transportTarget?.loadTarget === unit) {
@@ -1708,6 +1807,7 @@ class GameState {
         unit._savedPathIdx = 0;
         unit.patrolRoute = null;
         unit.patrolIndex = 0;
+        unit.stanceAnchor = { x: unit.x, y: unit.y };
         unit.state = 'idle';
         return true;
     }
@@ -2219,6 +2319,9 @@ class GameState {
         unit.target = { x: tx, y: ty };
         unit.attackTarget = null;
         unit.state = state;
+        if (state === 'moving' || state === 'patrolling') {
+            unit.stanceAnchor = { x: tx, y: ty };
+        }
         if (state !== 'patrolling') {
             unit.patrolRoute = null;
             unit.patrolIndex = 0;
@@ -3220,7 +3323,7 @@ class GameState {
 
                         // Retaliation: if being attacked by someone closer, switch to fight them
                         if (u._lastHitTime && Date.now() - u._lastHitTime < 3000) {
-                            const nearbyAttacker = this._findNearestEnemy(u, u.owner);
+                            const nearbyAttacker = this._findNearestEnemy(u, u.owner, { mode: 'retaliate' });
                             if (nearbyAttacker) {
                                 const attackerDist = Math.hypot(u.x - (nearbyAttacker.x !== undefined ? nearbyAttacker.x : nearbyAttacker.tx + 1),
                                     u.y - (nearbyAttacker.y !== undefined ? nearbyAttacker.y : nearbyAttacker.ty + 1));
@@ -3232,6 +3335,12 @@ class GameState {
                                     continue;
                                 }
                             }
+                        }
+
+                        if (!this.shouldUnitKeepPursuing(u, at)) {
+                            u.attackTarget = null;
+                            this.resumeUnitPostEngagement(u);
+                            continue;
                         }
 
                         if (!this.isAirUnit(u)) {
@@ -3283,7 +3392,7 @@ class GameState {
                         continue;
                     } else if (u.state === 'moving' || u.state === 'patrolling') {
                         // While moving, check for enemies in attack range → auto-engage
-                        const nearbyEnemy = this._findNearestEnemy(u, u.owner);
+                        const nearbyEnemy = this._findNearestEnemy(u, u.owner, { mode: 'moving' });
                         if (nearbyEnemy) {
                             const ed = Math.hypot(u.x - (nearbyEnemy.x !== undefined ? nearbyEnemy.x : nearbyEnemy.tx + 1),
                                                    u.y - (nearbyEnemy.y !== undefined ? nearbyEnemy.y : nearbyEnemy.ty + 1));
@@ -3354,9 +3463,7 @@ class GameState {
                         u._savedTarget = null;
                         u._savedPath = null;
                         u._savedPathIdx = null;
-                        if (!this.advancePatrolRoute(u)) {
-                            u.state = 'idle';
-                        }
+                        this.resumeUnitPostEngagement(u);
                         continue;
                     }
 
@@ -3371,12 +3478,18 @@ class GameState {
                             u.fireTimer = u.fireRate;
                             this.fireAt(u, at);
                         }
-                    } else {
-                        // Enemy moved out of range — chase them (not resume original move)
+                    } else if (this.shouldUnitKeepPursuing(u, at)) {
+                        // Enemy moved out of range — chase them if the current stance allows it
                         u.state = 'attacking';
                         u._savedTarget = null;
                         u._savedPath = null;
                         u._savedPathIdx = null;
+                    } else {
+                        u.attackTarget = null;
+                        u._savedTarget = null;
+                        u._savedPath = null;
+                        u._savedPathIdx = null;
+                        this.resumeUnitPostEngagement(u);
                     }
                     continue;
                 }
@@ -3427,7 +3540,7 @@ class GameState {
                 if (u.state !== 'idle' || u.hp <= 0 || u.state === 'dead' || !this.isCombatUnit(u)) continue;
 
                 // Find nearest enemy in sight range
-                const enemy = this._findNearestEnemy(u, pi);
+                const enemy = this._findNearestEnemy(u, pi, { mode: 'idle' });
                 if (enemy) {
                     u.attackTarget = enemy;
                     u.state = 'attacking';
@@ -3436,10 +3549,11 @@ class GameState {
         }
     }
 
-    _findNearestEnemy(unit, ownerIdx) {
+    _findNearestEnemy(unit, ownerIdx, options = {}) {
         const source = this.getEntityAnchor(unit);
         if (!source) return null;
-        let best = null, bestDist = (unit.sight || 0) + 1;
+        const searchRadius = options.searchRadius ?? this.getUnitAutoAcquireRadius(unit, options.mode || 'idle');
+        let best = null, bestDist = searchRadius + 0.01;
         for (let pi = 0; pi < this.players.length; pi++) {
             if (pi === ownerIdx) continue;
             for (const eu of this.players[pi].units) {
@@ -4508,6 +4622,10 @@ class GameState {
                 this.togglePatrolMode();
                 return;
             }
+            if (action.startsWith('stance-')) {
+                this.setSelectedUnitStance(action.replace('stance-', ''));
+                return;
+            }
             if (action === 'deploy') {
                 if (selectedUnit?.type === 'mcv') this.deployMCV(selectedUnit);
                 return;
@@ -4735,18 +4853,21 @@ class GameState {
                 const deployButton = s.type === 'mcv'
                     ? `<button class="selection-action" data-action="deploy" ${this.canDeployMCV(s) ? '' : 'disabled'}>Deploy MCV</button>`
                     : '';
+                const stanceButtons = this.canUnitReceiveCommand(s)
+                    ? UNIT_STANCE_ORDER.map(stance => `<button class="selection-action ${s.stance === stance ? 'active' : ''}" data-action="stance-${stance}">${UNIT_STANCE_PROFILES[stance].label}</button>`).join('')
+                    : '';
                 const commandButtons = this.canUnitReceiveCommand(s)
-                    ? `<button class="selection-action" data-action="stop">Stop</button><button class="selection-action" data-action="scatter">Scatter</button><button class="selection-action ${this.commandMode === 'set-patrol' ? 'active' : ''}" data-action="patrol">${this.commandMode === 'set-patrol' ? 'Placing Patrol' : 'Patrol'}</button>`
+                    ? `<button class="selection-action" data-action="stop">Stop</button><button class="selection-action" data-action="scatter">Scatter</button><button class="selection-action ${this.commandMode === 'set-patrol' ? 'active' : ''}" data-action="patrol">${this.commandMode === 'set-patrol' ? 'Placing Patrol' : 'Patrol'}</button>${stanceButtons}`
                     : '';
                 const unloadButton = this.isTransportUnit(s)
                     ? `<button class="selection-action" data-action="unload" ${s.passengers.length ? '' : 'disabled'}>Unload APC</button>`
                     : '';
                 info.innerHTML = `<div style="color:#00ff88">${this.getDisplayName(s.type)}</div>
                     <div>HP: ${Math.floor(s.hp)}/${s.maxHp}</div>
-                    <div>${[...extras, ...(s.patrolRoute?.length === 2 ? [`PATROL: ${Math.round(s.patrolRoute[0].x)}, ${Math.round(s.patrolRoute[0].y)} ⇄ ${Math.round(s.patrolRoute[1].x)}, ${Math.round(s.patrolRoute[1].y)}`] : [])].join(' | ')}</div>
+                    <div>${[...extras, `STANCE: ${this.getUnitStanceLabel(s).toUpperCase()}`, ...(s.patrolRoute?.length === 2 ? [`PATROL: ${Math.round(s.patrolRoute[0].x)}, ${Math.round(s.patrolRoute[0].y)} ⇄ ${Math.round(s.patrolRoute[1].x)}, ${Math.round(s.patrolRoute[1].y)}`] : [])].join(' | ')}</div>
                     ${veterancyBits.length ? `<div style="color:#ffd36b">${veterancyBits.join(' | ')}</div>` : ''}
                     <div style="color:#666;font-size:9px">${s.state}</div>
-                    ${(deployButton || unloadButton || commandButtons) ? `<div class="selection-actions">${deployButton}${unloadButton}${commandButtons}</div><div class="selection-hint">${this.commandMode === 'set-patrol' ? 'Right-click any visible tile to place the patrol turn-around point.' : 'Stop cancels the current order. Scatter sends the selection to nearby offsets. Patrol loops between the current position and a chosen tile. Hotkeys: S / X / P.'}</div>` : ''}`;
+                    ${(deployButton || unloadButton || commandButtons) ? `<div class="selection-actions">${deployButton}${unloadButton}${commandButtons}</div><div class="selection-hint">${this.commandMode === 'set-patrol' ? 'Right-click any visible tile to place the patrol turn-around point.' : 'Stop cancels the current order. Scatter sends the selection to nearby offsets. Patrol loops between the current position and a chosen tile. Stances: Guard / Aggressive / Hold Ground. Hotkeys: S / X / P / G / A / H.'}</div>` : ''}`;
             } else {
                 const def = BUILD_TYPES[s.type];
                 const statusBits = [];
@@ -4799,11 +4920,17 @@ class GameState {
             const fighters = units.length - harvesters;
             const veterans = units.filter(u => u.veterancyRank === 'veteran').length;
             const elites = units.filter(u => u.veterancyRank === 'elite').length;
+            const stanceSummary = new Set(commandableUnits.map(unit => this.getUnitStanceLabel(unit)));
+            const stanceLabel = stanceSummary.size === 1 ? [...stanceSummary][0] : 'Mixed';
+            const stanceButtons = commandableUnits.length
+                ? UNIT_STANCE_ORDER.map(stance => `<button class="selection-action ${stanceSummary.size === 1 && commandableUnits[0].stance === stance ? 'active' : ''}" data-action="stance-${stance}">${UNIT_STANCE_PROFILES[stance].label}</button>`).join('')
+                : '';
             info.innerHTML = `<div style="color:#00ff88">${units.length} units selected</div>
                 <div>${fighters} combat | ${harvesters} harvesters</div>
                 <div style="color:#ffd36b">${veterans} veteran | ${elites} elite</div>
+                <div>Stance: ${stanceLabel}</div>
                 <div style="color:#666;font-size:9px">Right-click commands apply to combat units only</div>
-                ${commandableUnits.length ? `<div class="selection-actions"><button class="selection-action" data-action="stop">Stop</button><button class="selection-action" data-action="scatter">Scatter</button><button class="selection-action ${this.commandMode === 'set-patrol' ? 'active' : ''}" data-action="patrol">${this.commandMode === 'set-patrol' ? 'Placing Patrol' : 'Patrol'}</button></div><div class="selection-hint">${this.commandMode === 'set-patrol' ? 'Right-click any visible tile to place the patrol turn-around point.' : 'Stop cancels the current order. Scatter fans the group into nearby positions. Patrol loops between the current position and a chosen tile. Hotkeys: S / X / P.'}</div>` : ''}`;
+                ${commandableUnits.length ? `<div class="selection-actions"><button class="selection-action" data-action="stop">Stop</button><button class="selection-action" data-action="scatter">Scatter</button><button class="selection-action ${this.commandMode === 'set-patrol' ? 'active' : ''}" data-action="patrol">${this.commandMode === 'set-patrol' ? 'Placing Patrol' : 'Patrol'}</button>${stanceButtons}</div><div class="selection-hint">${this.commandMode === 'set-patrol' ? 'Right-click any visible tile to place the patrol turn-around point.' : 'Stop cancels the current order. Scatter fans the group into nearby positions. Patrol loops between the current position and a chosen tile. Stances: Guard / Aggressive / Hold Ground. Hotkeys: S / X / P / G / A / H.'}</div>` : ''}`;
         }
     }
 
