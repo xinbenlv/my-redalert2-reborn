@@ -280,6 +280,7 @@ class Renderer3D {
         else if (unit.type === 'mcv') mesh = this.models.createMCV(factionColor);
         else if (unit.type === 'tank') mesh = this.models.createTank(factionColor);
         else if (unit.type === 'apc') mesh = this.models.createAPC(factionColor);
+        else if (unit.type === 'ifv') mesh = this.models.createIFV(factionColor);
         else if (unit.type === 'flakTrack') mesh = this.models.createFlakTrack(factionColor);
         else if (unit.type === 'artillery') mesh = this.models.createArtillery(factionColor);
         else if (unit.type === 'apocalypseTank') mesh = this.models.createApocalypseTank(factionColor);
@@ -346,12 +347,12 @@ class Renderer3D {
                 this.models.animateSoldierIdle(mesh);
                 this.models.flashMuzzle(mesh, false);
             }
-        } else if (unit.type === 'tank' || unit.type === 'apc' || unit.type === 'flakTrack' || unit.type === 'artillery' || unit.type === 'apocalypseTank') {
+        } else if (unit.type === 'tank' || unit.type === 'apc' || unit.type === 'ifv' || unit.type === 'flakTrack' || unit.type === 'artillery' || unit.type === 'apocalypseTank') {
             mesh.rotation.x = 0;
             const flashing = unit.fireRate > 0 && unit.fireTimer > unit.fireRate - 120;
             this.models.flashMuzzle(mesh, flashing);
             if (mesh.userData.turret) {
-                const wobble = unit.type === 'artillery' ? 0.025 : (unit.type === 'apocalypseTank' ? 0.03 : (unit.type === 'flakTrack' ? 0.035 : (unit.type === 'apc' ? 0.028 : 0.02)));
+                const wobble = unit.type === 'artillery' ? 0.025 : (unit.type === 'apocalypseTank' ? 0.03 : (unit.type === 'flakTrack' ? 0.035 : (unit.type === 'ifv' ? 0.032 : (unit.type === 'apc' ? 0.028 : 0.02))));
                 mesh.userData.turret.rotation.y = Math.sin(this.time * 0.8 + unit.x) * wobble;
             }
         } else if (unit.type === 'harrier') {
@@ -688,6 +689,9 @@ class Renderer3D {
             model.scale.setScalar(2.3);
         } else if (type === 'apc') {
             model = this.models.createAPC(factionColor);
+            model.scale.setScalar(2.25);
+        } else if (type === 'ifv') {
+            model = this.models.createIFV(factionColor);
             model.scale.setScalar(2.25);
         } else if (type === 'flakTrack') {
             model = this.models.createFlakTrack(factionColor);

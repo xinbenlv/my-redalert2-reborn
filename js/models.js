@@ -1433,6 +1433,91 @@ class ModelFactory {
         return group;
     }
 
+    createIFV(factionColor) {
+        const fc = this._factionColor(factionColor);
+        const group = new THREE.Group();
+        const hullMat = this._mat(0x5f6973, { roughness: 0.54, metalness: 0.34 });
+        const accentMat = this._mat(fc, { roughness: 0.4, metalness: 0.42, emissive: fc, emissiveIntensity: 0.09 });
+
+        const lowerHull = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.18, 1.04), hullMat);
+        lowerHull.position.y = 0.16;
+        lowerHull.castShadow = true;
+        group.add(lowerHull);
+
+        const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.2, 0.48), this._mat(0x8a949d, { roughness: 0.42, metalness: 0.28 }));
+        cabin.position.set(0, 0.31, -0.1);
+        cabin.castShadow = true;
+        group.add(cabin);
+
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, 0.08), accentMat);
+        stripe.position.set(0, 0.28, -0.38);
+        stripe.castShadow = true;
+        group.add(stripe);
+
+        const turret = new THREE.Group();
+        turret.position.set(0, 0.42, 0.12);
+        group.add(turret);
+        group.userData.turret = turret;
+
+        const mount = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 0.12, 10), accentMat);
+        mount.castShadow = true;
+        turret.add(mount);
+
+        const launcher = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.16, 0.34), this._mat(0x4d5660, { roughness: 0.46, metalness: 0.36 }));
+        launcher.position.set(0, 0.08, 0.12);
+        launcher.castShadow = true;
+        turret.add(launcher);
+
+        for (const x of [-0.08, 0.08]) {
+            const missileTube = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.04, 0.046, 0.62, 8),
+                this._mat(0x2e333a, { roughness: 0.34, metalness: 0.64 })
+            );
+            missileTube.rotation.x = Math.PI / 2;
+            missileTube.position.set(x, 0.02, 0.34);
+            missileTube.castShadow = true;
+            turret.add(missileTube);
+        }
+
+        const sensor = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 0.08), this._mat(0xa9d7ff, { roughness: 0.2, metalness: 0.15, emissive: 0x66bbff, emissiveIntensity: 0.22 }));
+        sensor.position.set(0, 0.16, -0.02);
+        sensor.castShadow = true;
+        turret.add(sensor);
+
+        for (const x of [-0.34, 0.34]) {
+            const wheelWell = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 0.92), this._mat(0x24282e, { roughness: 0.82 }));
+            wheelWell.position.set(x, 0.08, 0.02);
+            group.add(wheelWell);
+        }
+
+        for (const x of [-0.34, 0.34]) {
+            for (const z of [-0.32, 0.02, 0.36]) {
+                const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.08, 12), this._mat(0x17191d, { roughness: 0.9 }));
+                wheel.rotation.z = Math.PI / 2;
+                wheel.position.set(x, 0.1, z);
+                group.add(wheel);
+            }
+        }
+
+        const rearStorage = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.14, 0.18), this._mat(0x444d56, { roughness: 0.56, metalness: 0.24 }));
+        rearStorage.position.set(0, 0.22, 0.44);
+        rearStorage.castShadow = true;
+        group.add(rearStorage);
+
+        const bumper = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.06, 0.12), this._mat(0x2c3138, { roughness: 0.48, metalness: 0.5 }));
+        bumper.position.set(0, 0.1, -0.54);
+        group.add(bumper);
+
+        const muzzleFlash = new THREE.PointLight(0xffcc66, 0, 2.4);
+        muzzleFlash.position.set(0, 0.5, 0.86);
+        group.add(muzzleFlash);
+        group.userData.muzzleFlash = muzzleFlash;
+
+        group.userData.modelType = 'ifv';
+        group.userData.factionColor = fc;
+        return group;
+    }
+
     createApocalypseTank(factionColor) {
         const fc = this._factionColor(factionColor);
         const group = new THREE.Group();

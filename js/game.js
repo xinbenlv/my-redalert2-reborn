@@ -2547,6 +2547,7 @@ class GameState {
             else if (type === 'barracks') score += 35;
             else if (type === 'apocalypseTank') score += 55;
             else if (type === 'apc') score += 38;
+            else if (type === 'ifv') score += 42;
             else if (type === 'flakTrack') score += 34;
             else if (type === 'tank') score += 30;
             else if (role === 'harvester') score += 120;
@@ -2695,12 +2696,14 @@ class GameState {
         const barracks = this.getProductionBuildings(ai, 'soldier');
         const tankFactories = this.getProductionBuildings(ai, 'tank');
         const apcFactories = this.getProductionBuildings(ai, 'apc');
+        const ifvFactories = this.getProductionBuildings(ai, 'ifv');
         const flakTrackFactories = this.getProductionBuildings(ai, 'flakTrack');
         const artilleryFactories = this.getProductionBuildings(ai, 'artillery');
         const apocalypseFactories = this.getProductionBuildings(ai, 'apocalypseTank');
         const airfields = this.getProductionBuildings(ai, 'harrier');
         const enemyPlayer = this.players[0];
         const enemyHeavyUnits = enemyPlayer.units.filter(u => u.state !== 'dead' && u.armorType === 'heavy').length;
+        const enemyAirUnits = enemyPlayer.units.filter(u => u.state !== 'dead' && this.isAirUnit(u)).length;
         const enemyBuildings = enemyPlayer.buildings.filter(b => b.built && b.hp > 0).length;
         const enemyDefenses = enemyPlayer.buildings.filter(b => b.built && b.hp > 0 && this.isDefensiveBuilding(b)).length;
         const enemyInfantryUnits = enemyPlayer.units.filter(u => u.state !== 'dead' && u.role !== 'harvester' && u.armorType !== 'heavy').length;
@@ -2719,6 +2722,15 @@ class GameState {
             ai.money -= UNIT_TYPES.apc.cost;
             if (!wf.training) wf.training = 'apc';
             else wf.trainQueue.push('apc');
+            return;
+        }
+
+        const aiIfvCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'ifv').length + this._getTotalTrainQueue(ai, 'ifv');
+        if (ifvFactories.length > 0 && ai.money >= UNIT_TYPES.ifv.cost && enemyAirUnits >= 1 && aiIfvCount < Math.max(1, enemyAirUnits)) {
+            const wf = ifvFactories.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
+            ai.money -= UNIT_TYPES.ifv.cost;
+            if (!wf.training) wf.training = 'ifv';
+            else wf.trainQueue.push('ifv');
             return;
         }
 
@@ -3265,7 +3277,7 @@ class GameState {
                 this.addBuildItem(container, type, def.name, def.cost, def.description, false);
             });
         } else {
-            ['soldier', 'rocketInfantry', 'flakTrooper', 'engineer', 'harvester', 'tank', 'apc', 'flakTrack', 'artillery', 'harrier', 'apocalypseTank', 'mcv'].forEach(type => {
+            ['soldier', 'rocketInfantry', 'flakTrooper', 'engineer', 'harvester', 'tank', 'apc', 'ifv', 'flakTrack', 'artillery', 'harrier', 'apocalypseTank', 'mcv'].forEach(type => {
                 const def = UNIT_TYPES[type];
                 const description = type === 'engineer' ? 'Captures enemy buildings on contact.' : def.role;
                 this.addBuildItem(container, type, def.name, def.cost, description, true);

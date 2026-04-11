@@ -107,7 +107,7 @@
 ### B4.2 载具
 - [x] Harvester
 - [x] Rhino Tank
-- [~] APC / IFV（已补 APC；IFV 与运输/步兵装载协同仍未完成）
+- [~] APC / IFV（已补 APC + 基础 IFV 防空车；运输/步兵装载协同仍未完成）
 - [x] Anti-air vehicle
 - [x] Artillery / V3 / Siege 类远程单位
 - [ ] Terror Drone / Mirage / Prism Tank / Apocalypse / Kirov 等特色载具
@@ -275,7 +275,7 @@
 
 ### C2. P1：把“中局节奏”补出来
 - [x] Battle Lab
-- [~] 更多载具与反制链（已补 V3 Artillery + APC + Flak Track + Harrier 回场补弹，仍缺 IFV / 更完整的空地反制反馈）
+- [~] 更多载具与反制链（已补 V3 Artillery + APC + IFV + Flak Track + Harrier 回场补弹，仍缺运输协同与更完整的空地反制反馈）
 - [x] veterancy
 - [x] air units（已补 Airfield + Harrier 基础空袭链路）
 - [x] more maps

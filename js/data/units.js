@@ -172,6 +172,31 @@ window.UNIT_TYPES = {
         producedBy: 'warFactory',
         prerequisites: ['warFactory']
     },
+    ifv: {
+        name: 'IFV',
+        cost: 1100,
+        trainTime: 7600,
+        hp: 200,
+        speed: 1.08,
+        damage: 20,
+        range: 6.1,
+        fireRate: 820,
+        sight: 7,
+        armorType: 'light',
+        role: 'escort anti-air vehicle',
+        projectileSpeed: 11.2,
+        weaponType: 'missile',
+        damageProfile: {
+            infantry: 1.15,
+            light: 0.95,
+            heavy: 0.55,
+            building: 0.45,
+            air: 1.85
+        },
+        canAttackAir: true,
+        producedBy: 'warFactory',
+        prerequisites: ['warFactory', 'radarDome']
+    },
     flakTrack: {
         name: 'Flak Track',
         cost: 1000,
