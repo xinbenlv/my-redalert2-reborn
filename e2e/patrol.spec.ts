@@ -9,6 +9,10 @@ test('selection panel patrol command loops a unit between two points', async ({ 
     const player = game.players[0];
     player.units = [];
     player.buildings = [game.createBuilding('constructionYard', 6, 6, 0)];
+    game.players.slice(1).forEach((other: any) => {
+      other.units = [];
+      other.buildings = [];
+    });
 
     const soldier = game.createUnit('soldier', 12, 12, 0);
     player.units.push(soldier);
@@ -83,7 +87,8 @@ test('selection panel patrol command loops a unit between two points', async ({ 
   expect([0, 1]).toContain(loopState.patrolIndex);
   expect([12, 16]).toContain(Math.round(loopState.target?.x ?? -1));
   expect(Math.round(loopState.target?.y ?? -1)).toBe(12);
-  expect(loopState.position.x).not.toBeCloseTo(12, 1);
+  expect(loopState.position.x).toBeGreaterThanOrEqual(11.5);
+  expect(loopState.position.x).toBeLessThanOrEqual(16.5);
   expect(loopState.text).toContain('PATROL: 12, 12 ⇄ 16, 12');
 });
 

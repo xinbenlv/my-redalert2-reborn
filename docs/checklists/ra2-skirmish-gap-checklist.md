@@ -168,7 +168,7 @@
 - [x] 右键移动 / 攻击
 - [x] control groups
 - [x] stance（guard / aggressive / hold ground，已补选择面板按钮 + G/A/H 快捷键，并让 Guard / Aggressive / Hold Ground 真正影响索敌半径与追击 leash）
-- [~] force move / force fire / guard 等命令（已补 Force Move / Force Fire 选择面板按钮、C / F 快捷键，以及 Ctrl+右键/Force Fire 对地强制开火；guard 命令仍未完成）
+- [x] force move / force fire / guard 等命令（已补 Force Move / Force Fire / Guard 选择面板按钮、Q / C / F 快捷键，以及 Ctrl+右键/Force Fire 对地强制开火与 Guard 友军护卫指令）
 - [~] scatter / stop 命令（已补 Stop / Scatter / Force Fire / Force Move / Patrol 选择面板按钮与 S / X / C / F / P 快捷键；更完整的 guard / 阵型微操仍未做）
 - [x] waypoints（已补 Shift+右键移动路径队列，队列会在自动交战后恢复并继续执行）
 - [x] patrol
