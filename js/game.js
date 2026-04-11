@@ -852,7 +852,8 @@ class GameState {
             veterancyXp: 0,
             veterancyRank: 'rookie',
             stance: 'guard',
-            stanceAnchor: { x: tx, y: ty }
+            stanceAnchor: { x: tx, y: ty },
+            forceMove: false
         };
     }
 
@@ -1084,6 +1085,10 @@ class GameState {
                 return;
             }
             if (lowerKey === 'p' && this.togglePatrolMode()) {
+                e.preventDefault();
+                return;
+            }
+            if (lowerKey === 'f' && this.toggleForceMoveMode()) {
                 e.preventDefault();
                 return;
             }
@@ -1443,6 +1448,30 @@ class GameState {
             return;
         }
 
+        if (this.commandMode === 'set-force-move') {
+            const units = this.getSelectedCommandableUnits();
+            if (!units.length) {
+                this.commandMode = null;
+                this.updateSelectionInfo();
+                return;
+            }
+            let issuedForceMove = false;
+            units.forEach((unit, index) => {
+                const angle = units.length > 1 ? (Math.PI * 2 * index) / units.length : 0;
+                const radius = units.length > 1 ? Math.min(1.15, 0.32 * units.length) : 0;
+                const tx = Math.max(0.5, Math.min(MAP_SIZE - 0.5, tile.x + Math.cos(angle) * radius));
+                const ty = Math.max(0.5, Math.min(MAP_SIZE - 0.5, tile.y + Math.sin(angle) * radius));
+                issuedForceMove = this.issueForceMoveOrder(unit, tx, ty) || issuedForceMove;
+            });
+            this.commandMode = null;
+            if (issuedForceMove) {
+                this.commandPings.push({ tx: tile.x, ty: tile.y, color: '#7ae6ff', time: 0 });
+                this.eva(units.length === 1 ? `${this.getDisplayName(units[0].type)} force-moving.` : `${units.length} units force-moving.`);
+            }
+            this.updateSelectionInfo();
+            return;
+        }
+
         const friendlyTransport = this.players[this.currentPlayer].units.find(unit =>
             this.isTransportUnit(unit) && Math.hypot(unit.x - tile.x, unit.y - tile.y) < 1.5
         );
@@ -1508,6 +1537,7 @@ class GameState {
                 u.attackTarget = enemyUnit;
                 u.target = null;
                 u.state = 'attacking';
+                u.forceMove = false;
                 u.path = this.isAirUnit(u) ? null : this.findPath(Math.round(u.x), Math.round(u.y), Math.floor(enemyUnit.x), Math.floor(enemyUnit.y));
                 u.pathIdx = 0;
                 issuedAttack = true;
@@ -1534,6 +1564,7 @@ class GameState {
                 u.attackTarget = enemyBuilding;
                 u.target = null;
                 u.state = 'attacking';
+                u.forceMove = false;
                 u.path = this.isAirUnit(u) ? null : this.findPath(Math.round(u.x), Math.round(u.y), enemyBuilding.tx + 1, enemyBuilding.ty + 1);
                 u.pathIdx = 0;
                 issuedOrder = true;
@@ -1807,6 +1838,7 @@ class GameState {
         unit._savedPathIdx = 0;
         unit.patrolRoute = null;
         unit.patrolIndex = 0;
+        unit.forceMove = false;
         unit.stanceAnchor = { x: unit.x, y: unit.y };
         unit.state = 'idle';
         return true;
@@ -1817,6 +1849,15 @@ class GameState {
         if (!units.length) return false;
         this.commandMode = this.commandMode === 'set-patrol' ? null : 'set-patrol';
         this.eva(this.commandMode ? 'Right-click to place patrol route.' : 'Patrol placement cancelled.');
+        this.updateSelectionInfo();
+        return true;
+    }
+
+    toggleForceMoveMode() {
+        const units = this.getSelectedCommandableUnits();
+        if (!units.length) return false;
+        this.commandMode = this.commandMode === 'set-force-move' ? null : 'set-force-move';
+        this.eva(this.commandMode ? 'Right-click to force-move without auto-engaging.' : 'Force-move cancelled.');
         this.updateSelectionInfo();
         return true;
     }
@@ -1870,6 +1911,13 @@ class GameState {
         unit.patrolRoute = [start, destination];
         unit.patrolIndex = 1;
         this.issueMoveOrder(unit, destination.x, destination.y, 'patrolling');
+        return true;
+    }
+
+    issueForceMoveOrder(unit, tx, ty) {
+        if (!this.canUnitReceiveCommand(unit)) return false;
+        this.clearUnitOrders(unit);
+        this.issueMoveOrder(unit, tx, ty, 'moving', { forceMove: true });
         return true;
     }
 
@@ -2315,7 +2363,7 @@ class GameState {
         if (unit.role === 'harvester') this.assignHarvesterJob(unit, player);
     }
 
-    issueMoveOrder(unit, tx, ty, state = 'moving') {
+    issueMoveOrder(unit, tx, ty, state = 'moving', options = {}) {
         unit.target = { x: tx, y: ty };
         unit.attackTarget = null;
         unit.state = state;
@@ -2326,6 +2374,7 @@ class GameState {
             unit.patrolRoute = null;
             unit.patrolIndex = 0;
         }
+        unit.forceMove = !!options.forceMove;
         if (this.isAirUnit(unit)) {
             unit.path = null;
             unit.pathIdx = 0;
@@ -3392,7 +3441,7 @@ class GameState {
                         continue;
                     } else if (u.state === 'moving' || u.state === 'patrolling') {
                         // While moving, check for enemies in attack range → auto-engage
-                        const nearbyEnemy = this._findNearestEnemy(u, u.owner, { mode: 'moving' });
+                        const nearbyEnemy = u.forceMove ? null : this._findNearestEnemy(u, u.owner, { mode: 'moving' });
                         if (nearbyEnemy) {
                             const ed = Math.hypot(u.x - (nearbyEnemy.x !== undefined ? nearbyEnemy.x : nearbyEnemy.tx + 1),
                                                    u.y - (nearbyEnemy.y !== undefined ? nearbyEnemy.y : nearbyEnemy.ty + 1));
@@ -3446,6 +3495,7 @@ class GameState {
                             u.state = 'idle';
                             u.target = null;
                             u.path = null;
+                            u.forceMove = false;
                         }
                     } else if (dist > 0.1) {
                         const speed = u.speed * dt / 1000;
@@ -4622,6 +4672,10 @@ class GameState {
                 this.togglePatrolMode();
                 return;
             }
+            if (action === 'force-move') {
+                this.toggleForceMoveMode();
+                return;
+            }
             if (action.startsWith('stance-')) {
                 this.setSelectedUnitStance(action.replace('stance-', ''));
                 return;
@@ -4857,17 +4911,17 @@ class GameState {
                     ? UNIT_STANCE_ORDER.map(stance => `<button class="selection-action ${s.stance === stance ? 'active' : ''}" data-action="stance-${stance}">${UNIT_STANCE_PROFILES[stance].label}</button>`).join('')
                     : '';
                 const commandButtons = this.canUnitReceiveCommand(s)
-                    ? `<button class="selection-action" data-action="stop">Stop</button><button class="selection-action" data-action="scatter">Scatter</button><button class="selection-action ${this.commandMode === 'set-patrol' ? 'active' : ''}" data-action="patrol">${this.commandMode === 'set-patrol' ? 'Placing Patrol' : 'Patrol'}</button>${stanceButtons}`
+                    ? `<button class="selection-action" data-action="stop">Stop</button><button class="selection-action" data-action="scatter">Scatter</button><button class="selection-action ${this.commandMode === 'set-force-move' ? 'active' : ''}" data-action="force-move">${this.commandMode === 'set-force-move' ? 'Placing Force Move' : 'Force Move'}</button><button class="selection-action ${this.commandMode === 'set-patrol' ? 'active' : ''}" data-action="patrol">${this.commandMode === 'set-patrol' ? 'Placing Patrol' : 'Patrol'}</button>${stanceButtons}`
                     : '';
                 const unloadButton = this.isTransportUnit(s)
                     ? `<button class="selection-action" data-action="unload" ${s.passengers.length ? '' : 'disabled'}>Unload APC</button>`
                     : '';
                 info.innerHTML = `<div style="color:#00ff88">${this.getDisplayName(s.type)}</div>
                     <div>HP: ${Math.floor(s.hp)}/${s.maxHp}</div>
-                    <div>${[...extras, `STANCE: ${this.getUnitStanceLabel(s).toUpperCase()}`, ...(s.patrolRoute?.length === 2 ? [`PATROL: ${Math.round(s.patrolRoute[0].x)}, ${Math.round(s.patrolRoute[0].y)} ⇄ ${Math.round(s.patrolRoute[1].x)}, ${Math.round(s.patrolRoute[1].y)}`] : [])].join(' | ')}</div>
+                    <div>${[...extras, `STANCE: ${this.getUnitStanceLabel(s).toUpperCase()}`, ...(s.forceMove ? ['ORDER: FORCE MOVE'] : []), ...(s.patrolRoute?.length === 2 ? [`PATROL: ${Math.round(s.patrolRoute[0].x)}, ${Math.round(s.patrolRoute[0].y)} ⇄ ${Math.round(s.patrolRoute[1].x)}, ${Math.round(s.patrolRoute[1].y)}`] : [])].join(' | ')}</div>
                     ${veterancyBits.length ? `<div style="color:#ffd36b">${veterancyBits.join(' | ')}</div>` : ''}
                     <div style="color:#666;font-size:9px">${s.state}</div>
-                    ${(deployButton || unloadButton || commandButtons) ? `<div class="selection-actions">${deployButton}${unloadButton}${commandButtons}</div><div class="selection-hint">${this.commandMode === 'set-patrol' ? 'Right-click any visible tile to place the patrol turn-around point.' : 'Stop cancels the current order. Scatter sends the selection to nearby offsets. Patrol loops between the current position and a chosen tile. Stances: Guard / Aggressive / Hold Ground. Hotkeys: S / X / P / G / A / H.'}</div>` : ''}`;
+                    ${(deployButton || unloadButton || commandButtons) ? `<div class="selection-actions">${deployButton}${unloadButton}${commandButtons}</div><div class="selection-hint">${this.commandMode === 'set-patrol' ? 'Right-click any visible tile to place the patrol turn-around point.' : (this.commandMode === 'set-force-move' ? 'Right-click any tile or enemy to move through without auto-engaging.' : 'Stop cancels the current order. Scatter sends the selection to nearby offsets. Force Move ignores en-route auto-engage until arrival. Patrol loops between the current position and a chosen tile. Stances: Guard / Aggressive / Hold Ground. Hotkeys: S / X / F / P / G / A / H.')}</div>` : ''}`;
             } else {
                 const def = BUILD_TYPES[s.type];
                 const statusBits = [];
@@ -4930,7 +4984,7 @@ class GameState {
                 <div style="color:#ffd36b">${veterans} veteran | ${elites} elite</div>
                 <div>Stance: ${stanceLabel}</div>
                 <div style="color:#666;font-size:9px">Right-click commands apply to combat units only</div>
-                ${commandableUnits.length ? `<div class="selection-actions"><button class="selection-action" data-action="stop">Stop</button><button class="selection-action" data-action="scatter">Scatter</button><button class="selection-action ${this.commandMode === 'set-patrol' ? 'active' : ''}" data-action="patrol">${this.commandMode === 'set-patrol' ? 'Placing Patrol' : 'Patrol'}</button>${stanceButtons}</div><div class="selection-hint">${this.commandMode === 'set-patrol' ? 'Right-click any visible tile to place the patrol turn-around point.' : 'Stop cancels the current order. Scatter fans the group into nearby positions. Patrol loops between the current position and a chosen tile. Stances: Guard / Aggressive / Hold Ground. Hotkeys: S / X / P / G / A / H.'}</div>` : ''}`;
+                ${commandableUnits.length ? `<div class="selection-actions"><button class="selection-action" data-action="stop">Stop</button><button class="selection-action" data-action="scatter">Scatter</button><button class="selection-action ${this.commandMode === 'set-force-move' ? 'active' : ''}" data-action="force-move">${this.commandMode === 'set-force-move' ? 'Placing Force Move' : 'Force Move'}</button><button class="selection-action ${this.commandMode === 'set-patrol' ? 'active' : ''}" data-action="patrol">${this.commandMode === 'set-patrol' ? 'Placing Patrol' : 'Patrol'}</button>${stanceButtons}</div><div class="selection-hint">${this.commandMode === 'set-patrol' ? 'Right-click any visible tile to place the patrol turn-around point.' : (this.commandMode === 'set-force-move' ? 'Right-click any tile or enemy to move through without auto-engaging.' : 'Stop cancels the current order. Scatter fans the group into nearby positions. Force Move ignores en-route auto-engage until arrival. Patrol loops between the current position and a chosen tile. Stances: Guard / Aggressive / Hold Ground. Hotkeys: S / X / F / P / G / A / H.')}</div>` : ''}`;
         }
     }
 
