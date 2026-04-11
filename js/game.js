@@ -2184,17 +2184,70 @@ class GameState {
         return best;
     }
 
-    findNearestOreTile(unit) {
+    getLocalOreFieldValue(x, y, radius = 2) {
+        let total = 0;
+        for (let oy = Math.max(0, y - radius); oy <= Math.min(MAP_SIZE - 1, y + radius); oy++) {
+            for (let ox = Math.max(0, x - radius); ox <= Math.min(MAP_SIZE - 1, x + radius); ox++) {
+                if (Math.hypot(ox - x, oy - y) > radius + 0.25) continue;
+                const tile = this.map[oy][ox];
+                if (tile.type !== 'ore' || tile.oreAmount <= 0) continue;
+                total += tile.oreAmount;
+            }
+        }
+        return total;
+    }
+
+    getNearestEnemyThreatDistance(unit, x, y) {
+        if (!unit) return Infinity;
+        let best = Infinity;
+        for (let pi = 0; pi < this.players.length; pi++) {
+            if (pi === unit.owner) continue;
+            for (const enemyUnit of this.players[pi].units) {
+                if (enemyUnit.state === 'dead' || enemyUnit.hp <= 0 || !this.canEntityTarget(enemyUnit, unit)) continue;
+                const anchor = this.getEntityAnchor(enemyUnit);
+                if (!anchor) continue;
+                best = Math.min(best, Math.hypot(anchor.x - x, anchor.y - y));
+            }
+            for (const enemyBuilding of this.players[pi].buildings) {
+                if (enemyBuilding.hp <= 0 || !this.canEntityTarget(enemyBuilding, unit)) continue;
+                const anchor = this.getEntityAnchor(enemyBuilding);
+                if (!anchor) continue;
+                best = Math.min(best, Math.hypot(anchor.x - x, anchor.y - y));
+            }
+        }
+        return best;
+    }
+
+    findNearestOreTile(unit, player, options = {}) {
+        const refinery = options.refinery || this.findNearestRefinery(player, unit);
+        const refineryAnchor = refinery
+            ? { x: refinery.tx + refinery.size / 2 - 0.5, y: refinery.ty + refinery.size / 2 - 0.5 }
+            : null;
         let best = null;
+        let bestScore = Infinity;
         let bestDist = Infinity;
         for (let y = 0; y < MAP_SIZE; y++) {
             for (let x = 0; x < MAP_SIZE; x++) {
                 const tile = this.map[y][x];
                 if (tile.type !== 'ore' || tile.oreAmount <= 0) continue;
-                const dist = Math.hypot(unit.x - x, unit.y - y);
-                if (dist < bestDist) {
-                    bestDist = dist;
-                    best = { x, y, tile };
+                const unitDist = Math.hypot(unit.x - x, unit.y - y);
+                const refineryDist = refineryAnchor ? Math.hypot(refineryAnchor.x - x, refineryAnchor.y - y) : unitDist;
+                const threatDist = this.getNearestEnemyThreatDistance(unit, x, y);
+                const localFieldValue = this.getLocalOreFieldValue(x, y, 2);
+                const richness = tile.maxOreAmount > 0 ? tile.oreAmount / tile.maxOreAmount : 0;
+                const localFieldScore = Math.min(localFieldValue / 5000, 8);
+                const threatPenalty = Number.isFinite(threatDist) ? Math.max(0, 7 - threatDist) * 8 : 0;
+                const depletedPenalty = tile.oreAmount <= unit.harvestRate * 2 ? 6 : 0;
+                const score = unitDist * 1.15
+                    + refineryDist * 0.65
+                    + threatPenalty
+                    + depletedPenalty
+                    - richness * 2.5
+                    - localFieldScore * 1.6;
+                if (score < bestScore - 0.001 || (Math.abs(score - bestScore) <= 0.001 && unitDist < bestDist)) {
+                    bestScore = score;
+                    bestDist = unitDist;
+                    best = { x, y, tile, score, threatDist, localFieldValue };
                 }
             }
         }
@@ -2216,7 +2269,7 @@ class GameState {
             this.issueMoveOrder(unit, tx, ty, 'movingToRefinery');
             return;
         }
-        const ore = this.findNearestOreTile(unit);
+        const ore = this.findNearestOreTile(unit, player, { refinery });
         if (!ore) {
             unit.state = 'idle';
             unit.target = null;
@@ -2357,7 +2410,7 @@ class GameState {
             return;
         }
 
-        const ore = unit.oreTarget && unit.oreTarget.tile?.oreAmount > 0 ? unit.oreTarget : this.findNearestOreTile(unit);
+        const ore = unit.oreTarget && unit.oreTarget.tile?.oreAmount > 0 ? unit.oreTarget : this.findNearestOreTile(unit, player, { refinery: unit.returnRefinery || this.findNearestRefinery(player, unit) });
         if (!ore) {
             unit.state = 'idle';
             return;
