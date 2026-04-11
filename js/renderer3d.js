@@ -225,6 +225,7 @@ class Renderer3D {
         if (building.type === 'refinery') mesh = this.models.createRefinery(factionColor);
         else if (building.type === 'barracks') mesh = this.models.createBarracks(factionColor);
         else if (building.type === 'powerPlant') mesh = this.models.createPowerPlant(factionColor);
+        else if (building.type === 'radarDome') mesh = this.models.createRadarDome(factionColor);
         else if (building.type === 'warFactory') mesh = this.models.createWarFactory(factionColor);
 
         if (!mesh) return;
@@ -473,6 +474,7 @@ class Renderer3D {
             if (type === 'refinery') this._placementPreview = this.models.createRefinery(factionColor);
             else if (type === 'barracks') this._placementPreview = this.models.createBarracks(factionColor);
             else if (type === 'powerPlant') this._placementPreview = this.models.createPowerPlant(factionColor);
+            else if (type === 'radarDome') this._placementPreview = this.models.createRadarDome(factionColor);
             else if (type === 'warFactory') this._placementPreview = this.models.createWarFactory(factionColor);
             this._placementPreview.traverse(child => {
                 if (child.material) {
@@ -616,6 +618,7 @@ class Renderer3D {
         if (type === 'refinery') model = this.models.createRefinery(factionColor);
         else if (type === 'barracks') model = this.models.createBarracks(factionColor);
         else if (type === 'powerPlant') model = this.models.createPowerPlant(factionColor);
+        else if (type === 'radarDome') model = this.models.createRadarDome(factionColor);
         else if (type === 'warFactory') model = this.models.createWarFactory(factionColor);
         else if (type === 'soldier' || type === 'rocketInfantry' || type === 'flakTrooper') {
             model = this.models.createSoldier(factionColor);

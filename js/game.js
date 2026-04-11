@@ -1087,12 +1087,23 @@ class GameState {
         }
     }
 
+    hasPoweredBuilding(player, type) {
+        return !!player?.buildings?.some(building => building.type === type && building.built && building.hp > 0);
+    }
+
+    hasOperationalRadar(player) {
+        return this.hasPoweredBuilding(player, 'radarDome') && !POWER_SYSTEM.isLowPower(player);
+    }
+
     updatePowerState(player) {
         if (!player) return;
         const status = POWER_SYSTEM.getStatusLabel(player);
         const display = document.getElementById('power-display');
         if (!display) return;
-        display.textContent = status.text;
+        const radarState = this.hasPoweredBuilding(player, 'radarDome')
+            ? (this.hasOperationalRadar(player) ? 'RADAR ONLINE' : 'RADAR OFFLINE')
+            : 'NO RADAR';
+        display.textContent = `${status.text} • ${radarState}`;
         display.classList.toggle('low-power', status.lowPower);
         if (player === this.players[this.currentPlayer]) {
             if (status.lowPower && !player.lowPowerNotified) {
@@ -1100,6 +1111,7 @@ class GameState {
                 player.lowPowerNotified = true;
             }
             if (!status.lowPower) player.lowPowerNotified = false;
+            this.updateSelectionInfo();
         }
     }
 
@@ -1689,6 +1701,7 @@ class GameState {
         if (POWER_SYSTEM.isLowPower(ai) && tryBuild('powerPlant')) return;
         if (!builtTypes.has('refinery') && tryBuild('refinery')) return;
         if (!builtTypes.has('barracks') && tryBuild('barracks')) return;
+        if (!builtTypes.has('radarDome') && tryBuild('radarDome')) return;
         if (!builtTypes.has('warFactory') && tryBuild('warFactory')) return;
         if (ai.buildings.filter(b => b.type === 'powerPlant').length < 2 && ai.money > 2200 && tryBuild('powerPlant')) return;
 
@@ -2086,7 +2099,7 @@ class GameState {
         const mw = 180, mh = 180;
         const scale = mw / MAP_SIZE;
         const ownP = this.players[this.currentPlayer];
-        const radarOffline = POWER_SYSTEM.isLowPower(ownP);
+        const radarOffline = !this.hasOperationalRadar(ownP);
 
         mctx.fillStyle = '#0a0a1a';
         mctx.fillRect(0, 0, mw, mh);
@@ -2206,7 +2219,7 @@ class GameState {
         const p = this.players[this.currentPlayer];
 
         if (activeTab === 'buildings') {
-            ['powerPlant', 'refinery', 'barracks', 'warFactory'].forEach(type => {
+            ['powerPlant', 'refinery', 'barracks', 'radarDome', 'warFactory'].forEach(type => {
                 const def = BUILD_TYPES[type];
                 this.addBuildItem(container, type, def.name, def.cost, def.description, false);
             });
@@ -2331,6 +2344,7 @@ class GameState {
                 if (!s.built) statusBits.push(`Building: ${Math.floor(s.buildProgress * 100)}%`);
                 if (def.powerSupply) statusBits.push(`Power +${def.powerSupply}`);
                 if (def.powerDrain) statusBits.push(`Drain ${def.powerDrain}`);
+                if (def.providesRadar) statusBits.push(this.hasOperationalRadar(this.players[s.owner]) ? 'Radar online' : 'Radar offline');
                 if (s.repairing) statusBits.push('Repairing');
                 if (s.rallyPoint && this.canSetRallyPoint(s)) statusBits.push(`Rally: ${Math.round(s.rallyPoint.x)}, ${Math.round(s.rallyPoint.y)}`);
                 const canRepair = this.canRepairBuilding(this.players[s.owner], s);

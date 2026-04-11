@@ -72,7 +72,7 @@
 - [ ] Naval Yard
 
 ### B3.3 科技建筑
-- [ ] Radar / Radar Dome 作为独立建筑，而不是 power 状态文案
+- [x] Radar / Radar Dome 作为独立建筑，而不是 power 状态文案
 - [ ] Battle Lab / tech center
 - [ ] 机场 / 高科前置链
 - [ ] 秘密实验室 / tech pickup 机制（可选）
@@ -266,7 +266,7 @@
 - [ ] Construction Yard / MCV / 正式开局
 - [ ] Engineer
 - [x] Dog / Rocket infantry / AA infantry（至少 2 个）
-- [ ] Radar 独立建筑化
+- [x] Radar 独立建筑化
 - [x] 取消生产 / 退款
 - [x] waypoint / rally 可视化
 - [ ] 基础防御建筑（至少 2 个）

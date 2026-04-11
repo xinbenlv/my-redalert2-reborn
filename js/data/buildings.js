@@ -39,6 +39,19 @@ window.BUILD_TYPES = {
         description: 'Trains infantry.',
         prerequisites: ['powerPlant']
     },
+    radarDome: {
+        name: 'Radar Dome',
+        cost: 1000,
+        buildTime: 7000,
+        hp: 650,
+        sight: 7,
+        size: 2,
+        powerSupply: 0,
+        powerDrain: 35,
+        providesRadar: true,
+        description: 'Restores minimap radar coverage when powered.',
+        prerequisites: ['powerPlant', 'barracks']
+    },
     warFactory: {
         name: 'War Factory',
         cost: 2000,

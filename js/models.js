@@ -603,6 +603,79 @@ class ModelFactory {
         return group;
     }
 
+    createRadarDome(factionColor) {
+        const fc = this._factionColor(factionColor);
+        const group = new THREE.Group();
+
+        const slab = new THREE.Mesh(
+            new THREE.BoxGeometry(1.9, 0.12, 1.9),
+            this._mat(0x666a70, { roughness: 0.9, metalness: 0.1 })
+        );
+        slab.position.y = 0.06;
+        group.add(slab);
+
+        const body = new THREE.Mesh(
+            new THREE.BoxGeometry(1.2, 0.62, 1.2),
+            this._mat(0x56606a, { roughness: 0.68, metalness: 0.24 })
+        );
+        body.position.set(0, 0.35, 0);
+        body.castShadow = true;
+        group.add(body);
+
+        const dome = new THREE.Mesh(
+            new THREE.SphereGeometry(0.42, 18, 12, 0, Math.PI * 2, 0, Math.PI / 2),
+            this._mat(0x86c9dd, { roughness: 0.18, metalness: 0.35, emissive: 0x2b93aa, emissiveIntensity: 0.18 })
+        );
+        dome.position.set(0, 0.7, 0);
+        dome.castShadow = true;
+        group.add(dome);
+
+        const collar = new THREE.Mesh(
+            new THREE.TorusGeometry(0.46, 0.05, 8, 20),
+            this._mat(fc, { roughness: 0.35, metalness: 0.45, emissive: fc, emissiveIntensity: 0.12 })
+        );
+        collar.rotation.x = Math.PI / 2;
+        collar.position.set(0, 0.61, 0);
+        group.add(collar);
+
+        const mast = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.06, 0.08, 0.95, 10),
+            this._mat(0x7b838b, { roughness: 0.45, metalness: 0.45 })
+        );
+        mast.position.set(-0.45, 0.62, -0.35);
+        mast.castShadow = true;
+        group.add(mast);
+
+        const dish = new THREE.Mesh(
+            new THREE.SphereGeometry(0.32, 18, 12, 0, Math.PI * 2, 0, Math.PI / 2),
+            this._mat(0xb7bec5, { roughness: 0.3, metalness: 0.5, emissive: fc, emissiveIntensity: 0.06 })
+        );
+        dish.rotation.x = -Math.PI / 2.4;
+        dish.rotation.z = Math.PI / 4;
+        dish.position.set(-0.45, 1.08, -0.35);
+        dish.castShadow = true;
+        group.add(dish);
+
+        const emitter = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.04, 0.04, 0.25, 8),
+            this._mat(fc, { roughness: 0.3, metalness: 0.55, emissive: fc, emissiveIntensity: 0.25 })
+        );
+        emitter.rotation.z = Math.PI / 4;
+        emitter.position.set(-0.32, 1.02, -0.22);
+        group.add(emitter);
+
+        const stripe = new THREE.Mesh(
+            new THREE.BoxGeometry(1.26, 0.08, 0.1),
+            this._mat(fc, { roughness: 0.4, metalness: 0.28 })
+        );
+        stripe.position.set(0, 0.38, 0.56);
+        group.add(stripe);
+
+        group.userData.modelType = 'radarDome';
+        group.userData.factionColor = fc;
+        return group;
+    }
+
     createWarFactory(factionColor) {
         const fc = this._factionColor(factionColor);
         const group = new THREE.Group();
