@@ -1824,6 +1824,156 @@ class GameState {
 
     // ==================== AI SYSTEM ====================
 
+    getAIThreatenedHarvesters(aiPlayer = this.players[1], enemyPlayer = this.players[0]) {
+        if (!aiPlayer || !enemyPlayer) return [];
+        const vulnerableTargets = [
+            ...aiPlayer.units.filter(u => u.type === 'harvester' && u.state !== 'dead'),
+            ...aiPlayer.buildings.filter(b => b.type === 'refinery' && b.built && b.hp > 0)
+        ];
+        const enemyCombatants = enemyPlayer.units.filter(u => this.isCombatUnit(u) && u.state !== 'dead');
+        const threats = [];
+
+        for (const target of vulnerableTargets) {
+            const targetAnchor = this.getEntityAnchor(target);
+            if (!targetAnchor) continue;
+            const nearestEnemy = enemyCombatants
+                .map(enemy => {
+                    const anchor = this.getEntityAnchor(enemy);
+                    if (!anchor) return null;
+                    return {
+                        enemy,
+                        distance: Math.hypot(anchor.x - targetAnchor.x, anchor.y - targetAnchor.y)
+                    };
+                })
+                .filter(Boolean)
+                .sort((a, b) => a.distance - b.distance)[0];
+
+            if (nearestEnemy && nearestEnemy.distance <= 8) {
+                threats.push({
+                    target,
+                    enemy: nearestEnemy.enemy,
+                    distance: nearestEnemy.distance,
+                    priority: target.type === 'harvester' ? 2 : 1
+                });
+            }
+        }
+
+        return threats.sort((a, b) => b.priority - a.priority || a.distance - b.distance);
+    }
+
+    getAIPriorityTarget(aiPlayer = this.players[1], enemyPlayer = this.players[0]) {
+        if (!aiPlayer || !enemyPlayer) return null;
+        const candidates = [
+            ...enemyPlayer.units.filter(u => u.state !== 'dead'),
+            ...enemyPlayer.buildings.filter(b => b.built && b.hp > 0)
+        ];
+        if (candidates.length === 0) return null;
+
+        const scoreTarget = target => {
+            const isBuilding = target.tx !== undefined;
+            const type = target.type || '';
+            const role = target.role || '';
+            let score = isBuilding ? 20 : 10;
+
+            if (type === 'harvester') score += 120;
+            else if (type === 'powerPlant') score += 80;
+            else if (type === 'warFactory') score += 70;
+            else if (type === 'refinery') score += 65;
+            else if (type === 'radarDome') score += 45;
+            else if (type === 'barracks') score += 35;
+            else if (type === 'tank') score += 30;
+            else if (role === 'harvester') score += 120;
+            else if (role === 'engineer') score += 40;
+            else if (target.damage > 0) score += 25;
+
+            const targetAnchor = this.getEntityAnchor(target);
+            if (targetAnchor) {
+                const nearestAIUnit = aiPlayer.units
+                    .filter(u => this.isCombatUnit(u) && u.state !== 'dead')
+                    .map(unit => {
+                        const anchor = this.getEntityAnchor(unit);
+                        if (!anchor) return null;
+                        return Math.hypot(anchor.x - targetAnchor.x, anchor.y - targetAnchor.y);
+                    })
+                    .filter(distance => distance !== null)
+                    .sort((a, b) => a - b)[0];
+                if (nearestAIUnit !== undefined) {
+                    score -= nearestAIUnit * 2.5;
+                }
+            }
+
+            score += Math.max(0, ((target.maxHp || target.hp || 0) - (target.hp || 0)) * 0.1);
+            return score;
+        };
+
+        return candidates.sort((a, b) => scoreTarget(b) - scoreTarget(a))[0];
+    }
+
+    issueAIAttackOrder(units, target) {
+        if (!target) return;
+        const anchor = this.getEntityAnchor(target);
+        if (!anchor) return;
+        for (const unit of units) {
+            if (!unit || unit.state === 'dead' || !this.isCombatUnit(unit)) continue;
+            unit.attackTarget = target;
+            unit.target = null;
+            unit.state = 'attacking';
+            unit.path = this.findPath(Math.floor(unit.x), Math.floor(unit.y), Math.floor(anchor.x), Math.floor(anchor.y));
+            unit.pathIdx = 0;
+        }
+    }
+
+    assignAIDefenders(aiPlayer, enemyPlayer, idleCombatUnits) {
+        const threats = this.getAIThreatenedHarvesters(aiPlayer, enemyPlayer);
+        if (threats.length === 0 || idleCombatUnits.length === 0) return [];
+
+        const assignments = [];
+        const available = [...idleCombatUnits];
+        const engagedEnemies = new Set();
+        for (const threat of threats) {
+            if (available.length === 0) break;
+            if (engagedEnemies.has(threat.enemy)) continue;
+            const defenderCount = threat.target.type === 'harvester' ? 2 : 1;
+            const targetAnchor = this.getEntityAnchor(threat.enemy);
+            if (!targetAnchor) continue;
+            const defenders = available
+                .sort((a, b) => Math.hypot(a.x - targetAnchor.x, a.y - targetAnchor.y) - Math.hypot(b.x - targetAnchor.x, b.y - targetAnchor.y))
+                .splice(0, Math.min(defenderCount, available.length));
+            if (defenders.length === 0) continue;
+            engagedEnemies.add(threat.enemy);
+            this.issueAIAttackOrder(defenders, threat.enemy);
+            defenders.forEach(unit => assignments.push(unit));
+        }
+
+        return assignments;
+    }
+
+    assignAIHarassers(aiPlayer, enemyPlayer, idleCombatUnits) {
+        if (idleCombatUnits.length < 2) return [];
+        const enemyHarvesters = enemyPlayer.units.filter(u => u.type === 'harvester' && u.state !== 'dead');
+        if (enemyHarvesters.length === 0) return [];
+
+        const target = enemyHarvesters
+            .map(harvester => {
+                const anchor = this.getEntityAnchor(harvester);
+                if (!anchor) return null;
+                const distance = idleCombatUnits
+                    .map(unit => Math.hypot(unit.x - anchor.x, unit.y - anchor.y))
+                    .sort((a, b) => a - b)[0];
+                return { harvester, distance };
+            })
+            .filter(Boolean)
+            .sort((a, b) => a.distance - b.distance)[0]?.harvester;
+        if (!target) return [];
+
+        const targetAnchor = this.getEntityAnchor(target);
+        const harassers = [...idleCombatUnits]
+            .sort((a, b) => Math.hypot(a.x - targetAnchor.x, a.y - targetAnchor.y) - Math.hypot(b.x - targetAnchor.x, b.y - targetAnchor.y))
+            .slice(0, Math.min(2, idleCombatUnits.length));
+        this.issueAIAttackOrder(harassers, target);
+        return harassers;
+    }
+
     updateAI(dt) {
         this.aiTimer += dt;
         if (this.aiTimer < this.aiDecisionInterval) return;
@@ -1908,20 +2058,23 @@ class GameState {
             else bb.trainQueue.push(infantryChoice);
         }
 
-        const combatUnits = ai.units.filter(u => this.isCombatUnit(u) && u.state === 'idle');
-        if (combatUnits.length >= 5) {
-            const playerData = this.players[0];
-            let target = playerData.buildings.find(b => b.type === 'powerPlant' || b.type === 'warFactory') || playerData.buildings[0];
-            if (!target) target = playerData.units.find(u => u.state !== 'dead');
+        let idleCombatUnits = ai.units.filter(u => this.isCombatUnit(u) && u.state === 'idle');
+        const assignedDefenders = this.assignAIDefenders(ai, enemyPlayer, idleCombatUnits);
+        if (assignedDefenders.length > 0) {
+            const defenderSet = new Set(assignedDefenders);
+            idleCombatUnits = idleCombatUnits.filter(unit => !defenderSet.has(unit));
+        }
+
+        const assignedHarassers = this.assignAIHarassers(ai, enemyPlayer, idleCombatUnits);
+        if (assignedHarassers.length > 0) {
+            const harasserSet = new Set(assignedHarassers);
+            idleCombatUnits = idleCombatUnits.filter(unit => !harasserSet.has(unit));
+        }
+
+        if (idleCombatUnits.length >= 4) {
+            const target = this.getAIPriorityTarget(ai, enemyPlayer);
             if (target) {
-                const tx = target.tx !== undefined ? target.tx + target.size / 2 - 0.5 : target.x;
-                const ty = target.ty !== undefined ? target.ty + target.size / 2 - 0.5 : target.y;
-                for (const unit of combatUnits) {
-                    unit.attackTarget = target;
-                    unit.state = 'attacking';
-                    unit.path = this.findPath(Math.floor(unit.x), Math.floor(unit.y), Math.floor(tx), Math.floor(ty));
-                    unit.pathIdx = 0;
-                }
+                this.issueAIAttackOrder(idleCombatUnits, target);
             }
         }
     }
