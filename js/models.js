@@ -972,6 +972,74 @@ class ModelFactory {
         return group;
     }
 
+    createPatriotBattery(factionColor) {
+        const fc = this._factionColor(factionColor);
+        const group = new THREE.Group();
+
+        const pad = new THREE.Mesh(
+            new THREE.BoxGeometry(0.98, 0.12, 0.98),
+            this._mat(0x646b72, { roughness: 0.84, metalness: 0.14 })
+        );
+        pad.position.y = 0.06;
+        group.add(pad);
+
+        const body = new THREE.Mesh(
+            new THREE.BoxGeometry(0.54, 0.24, 0.62),
+            this._mat(0x85909a, { roughness: 0.56, metalness: 0.34 })
+        );
+        body.position.y = 0.28;
+        body.castShadow = true;
+        group.add(body);
+
+        const mast = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.06, 0.08, 0.34, 10),
+            this._mat(0x394049, { roughness: 0.46, metalness: 0.48 })
+        );
+        mast.position.set(0, 0.38, -0.08);
+        mast.castShadow = true;
+        group.add(mast);
+
+        const radar = new THREE.Mesh(
+            new THREE.BoxGeometry(0.4, 0.16, 0.06),
+            this._mat(fc, { roughness: 0.35, metalness: 0.42, emissive: fc, emissiveIntensity: 0.12 })
+        );
+        radar.position.set(0, 0.56, -0.08);
+        radar.castShadow = true;
+        group.add(radar);
+
+        const launcher = new THREE.Mesh(
+            new THREE.BoxGeometry(0.56, 0.16, 0.3),
+            this._mat(0xc7d2db, { roughness: 0.42, metalness: 0.4 })
+        );
+        launcher.rotation.x = -0.45;
+        launcher.position.set(0, 0.48, 0.14);
+        launcher.castShadow = true;
+        group.add(launcher);
+
+        for (const x of [-0.16, 0, 0.16]) {
+            const missile = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.025, 0.025, 0.32, 8),
+                this._mat(0xf1f5f9, { roughness: 0.28, metalness: 0.56 })
+            );
+            missile.rotation.x = Math.PI / 2 - 0.45;
+            missile.position.set(x, 0.5, 0.22);
+            missile.castShadow = true;
+            group.add(missile);
+
+            const nose = new THREE.Mesh(
+                new THREE.ConeGeometry(0.03, 0.08, 8),
+                this._mat(0xe85d4f, { roughness: 0.42, metalness: 0.18 })
+            );
+            nose.rotation.x = Math.PI / 2 - 0.45;
+            nose.position.set(x, 0.53, 0.33);
+            group.add(nose);
+        }
+
+        group.userData.modelType = 'patriotBattery';
+        group.userData.factionColor = fc;
+        return group;
+    }
+
     createBattleBunker(factionColor) {
         const fc = this._factionColor(factionColor);
         const group = new THREE.Group();

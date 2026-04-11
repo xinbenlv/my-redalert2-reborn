@@ -234,6 +234,7 @@ class Renderer3D {
         else if (building.type === 'serviceDepot') mesh = this.models.createServiceDepot(factionColor);
         else if (building.type === 'pillbox') mesh = this.models.createPillbox(factionColor);
         else if (building.type === 'sentryGun') mesh = this.models.createSentryGun(factionColor);
+        else if (building.type === 'patriotBattery') mesh = this.models.createPatriotBattery(factionColor);
         else if (building.type === 'battleBunker') mesh = this.models.createBattleBunker(factionColor);
         else if (building.type === 'sandbagWall') mesh = this.models.createSandbagWall(factionColor);
 
@@ -515,6 +516,7 @@ class Renderer3D {
             else if (type === 'serviceDepot') this._placementPreview = this.models.createServiceDepot(factionColor);
             else if (type === 'pillbox') this._placementPreview = this.models.createPillbox(factionColor);
             else if (type === 'sentryGun') this._placementPreview = this.models.createSentryGun(factionColor);
+            else if (type === 'patriotBattery') this._placementPreview = this.models.createPatriotBattery(factionColor);
             else if (type === 'sandbagWall') this._placementPreview = this.models.createSandbagWall(factionColor);
             this._placementPreview.traverse(child => {
                 if (child.material) {
@@ -684,6 +686,7 @@ class Renderer3D {
         else if (type === 'serviceDepot') model = this.models.createServiceDepot(factionColor);
         else if (type === 'pillbox') model = this.models.createPillbox(factionColor);
         else if (type === 'sentryGun') model = this.models.createSentryGun(factionColor);
+        else if (type === 'patriotBattery') model = this.models.createPatriotBattery(factionColor);
         else if (type === 'battleBunker') model = this.models.createBattleBunker(factionColor);
         else if (type === 'sandbagWall') model = this.models.createSandbagWall(factionColor);
         else if (type === 'soldier' || type === 'attackDog' || type === 'rocketInfantry' || type === 'flakTrooper' || type === 'engineer') {

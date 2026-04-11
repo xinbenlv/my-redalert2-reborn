@@ -569,6 +569,7 @@ class GameState {
             projectileSpeed: def.projectileSpeed || 8,
             weaponType: def.weaponType || 'rifle',
             damageProfile: def.damageProfile || null,
+            targetArmorClasses: Array.isArray(def.targetArmorClasses) ? [...def.targetArmorClasses] : null,
             canAttackGround: def.canAttackGround !== false,
             canAttackAir: !!def.canAttackAir,
             attackTarget: null,
@@ -1799,7 +1800,8 @@ class GameState {
         const ifvCount = this.getUnitCount(player, 'ifv', { includeQueued: true });
         const flakTrackCount = this.getUnitCount(player, 'flakTrack', { includeQueued: true });
         const flakTrooperCount = this.getUnitCount(player, 'flakTrooper', { includeQueued: true });
-        return (ifvCount * 2) + (flakTrackCount * 2) + flakTrooperCount;
+        const patriotBatteryCount = player.buildings.filter(b => b.type === 'patriotBattery' && b.hp > 0).length;
+        return (ifvCount * 2) + (flakTrackCount * 2) + flakTrooperCount + (patriotBatteryCount * 3);
     }
 
     getPrimarySelectedBuilding() {
@@ -3555,8 +3557,11 @@ class GameState {
         const aiIfvCount = this.getUnitCount(ai, 'ifv', { includeQueued: true });
         const aiFlakTrackCount = this.getUnitCount(ai, 'flakTrack', { includeQueued: true });
         const aiFlakCount = this.getUnitCount(ai, 'flakTrooper', { includeQueued: true });
+        const aiPatriotCount = ai.buildings.filter(b => b.type === 'patriotBattery' && b.hp > 0).length;
         const antiAirCoverageScore = this.getAntiAirCoverageScore(ai);
         const antiAirEmergency = enemyAirPressure >= 2 && antiAirCoverageScore < (enemyAirPressure * 2);
+        const desiredPatriotCount = enemyAirPressure >= 5 ? 2 : (enemyAirPressure >= 3 ? 1 : 0);
+        if (antiAirEmergency && builtTypes.has('radarDome') && ai.money >= BUILD_TYPES.patriotBattery.cost && aiPatriotCount < desiredPatriotCount && tryBuild('patriotBattery')) return;
         const desiredIfvCount = enemyAirPressure >= 4 ? 2 : (enemyAirPressure >= 2 ? 1 : 0);
         const desiredFlakTrackCount = enemyAirPressure >= 5 ? 2 : (enemyAirPressure >= 3 ? 1 : 0);
         const desiredFlakTrooperCount = enemyAirPressure >= 2 ? Math.max(2, enemyAirPressure) : 0;
@@ -4169,7 +4174,7 @@ class GameState {
         const p = this.players[this.currentPlayer];
 
         if (activeTab === 'buildings') {
-            ['powerPlant', 'advancedPowerPlant', 'refinery', 'serviceDepot', 'barracks', 'radarDome', 'warFactory', 'airfield', 'battleLab', 'pillbox', 'sentryGun', 'battleBunker', 'sandbagWall'].forEach(type => {
+            ['powerPlant', 'advancedPowerPlant', 'refinery', 'serviceDepot', 'barracks', 'radarDome', 'warFactory', 'airfield', 'battleLab', 'pillbox', 'sentryGun', 'patriotBattery', 'battleBunker', 'sandbagWall'].forEach(type => {
                 const def = BUILD_TYPES[type];
                 this.addBuildItem(container, type, def.name, def.cost, def.description, false);
             });

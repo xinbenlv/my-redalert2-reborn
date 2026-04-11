@@ -50,6 +50,7 @@ test('AI reads enemy air tech pressure and preps anti-air before the sky is alre
       pressure: game.getAirThreatPressure(human),
       training: warFactory?.training || null,
       queue: [...(warFactory?.trainQueue || [])],
+      queuedBuildings: ai.buildings.filter((building: any) => !building.built).map((building: any) => building.type),
     };
 
     seedEnemyAirTech();
@@ -81,7 +82,9 @@ test('AI reads enemy air tech pressure and preps anti-air before the sky is alre
   });
 
   expect(aiState.proactiveIfv.pressure).toBeGreaterThanOrEqual(3);
-  expect([aiState.proactiveIfv.training, ...aiState.proactiveIfv.queue]).toContain('ifv');
+  expect(
+    [aiState.proactiveIfv.training, ...aiState.proactiveIfv.queue, ...aiState.proactiveIfv.queuedBuildings].some((entry) => entry === 'ifv' || entry === 'patriotBattery')
+  ).toBe(true);
   expect(aiState.flakFallback.pressure).toBeGreaterThanOrEqual(3);
   expect(aiState.flakFallback.warFactoryTraining).toBe('tank');
   expect([aiState.flakFallback.barracksTraining, ...aiState.flakFallback.barracksQueue]).toContain('flakTrooper');

@@ -79,8 +79,8 @@
 
 ### B3.4 防御建筑
 - [x] Pillbox / Sentry Gun 级基础防御
-- [ ] Patriot / Flak Cannon / Tesla Coil / Prism Tower 等阵营防御
-- [ ] 防空建筑
+- [~] Patriot / Flak Cannon / Tesla Coil / Prism Tower 等阵营防御（已补 Patriot Battery，其他阵营防御仍缺）
+- [~] 防空建筑（已补 Patriot Battery 基础防空塔，更多阵营/层级仍未完成）
 - [x] 围墙（Wall / Sandbag / Concrete Wall）
 - [ ] 防御建筑供电 / 低电停摆逻辑细化
 
@@ -223,7 +223,7 @@
 - [ ] 多 build order
 - [ ] 阵营差异化 AI
 - [x] 护矿 / 骚扰矿车
-- [~] 防空意识（已补 Harrier / Airfield、Flak Track 对空锁定、AI 空袭出机逻辑，以及敌方机场/排队 Harrier 压力下的防空优先级响应；更完整的按敌方空军规模扩张防空体系仍未做完）
+- [~] 防空意识（已补 Harrier / Airfield、Flak Track 对空锁定、Patriot Battery 防空塔，以及敌方机场/排队 Harrier 压力下的防空优先级响应；更完整的按敌方空军规模扩张防空体系仍未做完）
 - [ ] 修建筑 / 卖残血建筑等经济决策
 - [ ] 科技攀升
 - [ ] 防御建筑布局

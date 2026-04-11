@@ -177,6 +177,33 @@ window.BUILD_TYPES = {
         description: 'Powered turret for anti-vehicle defense.',
         prerequisites: ['constructionYard', 'powerPlant', 'refinery', 'barracks']
     },
+    patriotBattery: {
+        name: 'Patriot Battery',
+        cost: 1200,
+        buildTime: 6500,
+        hp: 480,
+        sight: 8,
+        size: 1,
+        powerSupply: 0,
+        powerDrain: 25,
+        damage: 44,
+        range: 7.2,
+        fireRate: 1200,
+        projectileSpeed: 12,
+        weaponType: 'missile',
+        canAttackGround: false,
+        canAttackAir: true,
+        targetArmorClasses: ['air'],
+        damageProfile: {
+            air: 1.5,
+            infantry: 0,
+            light: 0,
+            heavy: 0,
+            building: 0
+        },
+        description: 'Long-range anti-air missile battery that keeps bombers honest.',
+        prerequisites: ['constructionYard', 'powerPlant', 'radarDome', 'barracks']
+    },
     battleBunker: {
         name: 'Battle Bunker',
         cost: 900,
