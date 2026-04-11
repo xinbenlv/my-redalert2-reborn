@@ -109,7 +109,7 @@
 - [x] Rhino Tank
 - [ ] APC / IFV
 - [ ] Anti-air vehicle
-- [ ] Artillery / V3 / Siege 类远程单位
+- [x] Artillery / V3 / Siege 类远程单位
 - [ ] Terror Drone / Mirage / Prism Tank / Apocalypse / Kirov 等特色载具
 - [x] MCV
 - [ ] Repair IFV / support vehicle（如需要）
@@ -275,7 +275,7 @@
 
 ### C2. P1：把“中局节奏”补出来
 - [x] Battle Lab
-- [ ] 更多载具与反制链
+- [~] 更多载具与反制链（已补 V3 Artillery，仍缺 APC / 防空载具等）
 - [ ] veterancy
 - [ ] air units
 - [ ] more maps

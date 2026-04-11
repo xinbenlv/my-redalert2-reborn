@@ -147,6 +147,29 @@ window.UNIT_TYPES = {
         producedBy: 'warFactory',
         prerequisites: ['warFactory']
     },
+    artillery: {
+        name: 'V3 Artillery',
+        cost: 1200,
+        trainTime: 9000,
+        hp: 150,
+        speed: 0.7,
+        damage: 48,
+        range: 8.5,
+        fireRate: 2500,
+        sight: 8,
+        armorType: 'heavy',
+        role: 'siege vehicle',
+        projectileSpeed: 8.2,
+        weaponType: 'rocketArtillery',
+        damageProfile: {
+            infantry: 0.35,
+            light: 1.05,
+            heavy: 1.1,
+            building: 1.7
+        },
+        producedBy: 'warFactory',
+        prerequisites: ['warFactory', 'radarDome']
+    },
     apocalypseTank: {
         name: 'Apocalypse Tank',
         cost: 1750,

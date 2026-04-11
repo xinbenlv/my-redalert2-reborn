@@ -1126,6 +1126,62 @@ class ModelFactory {
         return group;
     }
 
+    createArtillery(factionColor) {
+        const fc = this._factionColor(factionColor);
+        const group = new THREE.Group();
+        const chassisMat = this._mat(0x606872, { roughness: 0.56, metalness: 0.34 });
+        const launcherMat = this._mat(fc, { roughness: 0.4, metalness: 0.36 });
+
+        const hull = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.18, 1.04), chassisMat);
+        hull.position.y = 0.18;
+        hull.castShadow = true;
+        group.add(hull);
+
+        const cab = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.24, 0.3), this._mat(0x98a1aa, { roughness: 0.42, metalness: 0.28 }));
+        cab.position.set(0, 0.34, -0.24);
+        cab.castShadow = true;
+        group.add(cab);
+
+        const launcherBase = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.16, 0.5), launcherMat);
+        launcherBase.position.set(0, 0.34, 0.08);
+        launcherBase.castShadow = true;
+        group.add(launcherBase);
+
+        const rack = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.18, 0.74), this._mat(0x454b53, { roughness: 0.42, metalness: 0.48 }));
+        rack.position.set(0, 0.52, 0.16);
+        rack.rotation.x = -0.35;
+        rack.castShadow = true;
+        group.add(rack);
+        group.userData.turret = rack;
+
+        for (const x of [-0.12, 0.12]) {
+            const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.82, 8), this._mat(0x2d3138, { roughness: 0.34, metalness: 0.62 }));
+            tube.rotation.x = Math.PI / 2 - 0.32;
+            tube.position.set(x, 0.61, 0.43);
+            tube.castShadow = true;
+            group.add(tube);
+        }
+
+        for (const x of [-0.32, 0.32]) {
+            const tread = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.15, 1.12), this._mat(0x22262d, { roughness: 0.82 }));
+            tread.position.set(x, 0.09, 0);
+            group.add(tread);
+        }
+
+        const stabilizer = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.06, 0.14), this._mat(0x444a52, { roughness: 0.55, metalness: 0.22 }));
+        stabilizer.position.set(0, 0.08, 0.58);
+        group.add(stabilizer);
+
+        const muzzleFlash = new THREE.PointLight(0xffaa00, 0, 2.8);
+        muzzleFlash.position.set(0, 0.72, 0.98);
+        group.add(muzzleFlash);
+        group.userData.muzzleFlash = muzzleFlash;
+
+        group.userData.modelType = 'artillery';
+        group.userData.factionColor = fc;
+        return group;
+    }
+
     createApocalypseTank(factionColor) {
         const fc = this._factionColor(factionColor);
         const group = new THREE.Group();
