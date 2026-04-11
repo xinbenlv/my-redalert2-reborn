@@ -1385,6 +1385,148 @@ class ModelFactory {
         return group;
     }
 
+    createAirfield(factionColor) {
+        const fc = this._factionColor(factionColor);
+        const group = new THREE.Group();
+
+        const slab = new THREE.Mesh(
+            new THREE.BoxGeometry(2.0, 0.08, 2.0),
+            this._mat(0x666a70, { roughness: 0.9, metalness: 0.1 })
+        );
+        slab.position.y = 0.04;
+        slab.receiveShadow = true;
+        group.add(slab);
+
+        const runway = new THREE.Mesh(
+            new THREE.BoxGeometry(1.6, 0.02, 1.7),
+            this._mat(0x2f3338, { roughness: 0.95, metalness: 0.05 })
+        );
+        runway.position.y = 0.09;
+        group.add(runway);
+
+        const stripe = new THREE.Mesh(
+            new THREE.BoxGeometry(0.12, 0.03, 1.4),
+            this._mat(fc, { roughness: 0.45, metalness: 0.25, emissive: fc, emissiveIntensity: 0.1 })
+        );
+        stripe.position.set(0, 0.1, 0);
+        group.add(stripe);
+
+        const tower = new THREE.Mesh(
+            new THREE.BoxGeometry(0.34, 0.85, 0.34),
+            this._mat(0x88919a, { roughness: 0.5, metalness: 0.28 })
+        );
+        tower.position.set(-0.65, 0.48, -0.55);
+        tower.castShadow = true;
+        group.add(tower);
+
+        const towerTop = new THREE.Mesh(
+            new THREE.BoxGeometry(0.5, 0.2, 0.5),
+            this._mat(0xaab3bb, { roughness: 0.4, metalness: 0.35 })
+        );
+        towerTop.position.set(-0.65, 0.96, -0.55);
+        towerTop.castShadow = true;
+        group.add(towerTop);
+
+        const hangar = new THREE.Mesh(
+            new THREE.BoxGeometry(0.92, 0.42, 0.62),
+            this._mat(0x59616b, { roughness: 0.62, metalness: 0.24 })
+        );
+        hangar.position.set(0.45, 0.25, -0.45);
+        hangar.castShadow = true;
+        group.add(hangar);
+
+        const door = new THREE.Mesh(
+            new THREE.PlaneGeometry(0.5, 0.24),
+            this._mat(0x2d3136, { roughness: 0.92, metalness: 0.08 })
+        );
+        door.position.set(0.45, 0.22, -0.14);
+        group.add(door);
+
+        for (const x of [-0.55, -0.1, 0.35, 0.8]) {
+            const light = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.03, 0.03, 0.14, 8),
+                this._mat(0x66d7ff, { emissive: 0x66d7ff, emissiveIntensity: 0.6, roughness: 0.2 })
+            );
+            light.position.set(x, 0.11, 0.78);
+            group.add(light);
+        }
+
+        group.userData.modelType = 'airfield';
+        group.userData.factionColor = fc;
+        return group;
+    }
+
+    createHarrier(factionColor) {
+        const fc = this._factionColor(factionColor);
+        const group = new THREE.Group();
+
+        const fuselage = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.09, 0.13, 1.18, 12),
+            this._mat(0x7c8792, { roughness: 0.42, metalness: 0.46 })
+        );
+        fuselage.rotation.x = Math.PI / 2;
+        fuselage.position.y = 0.08;
+        fuselage.castShadow = true;
+        group.add(fuselage);
+
+        const nose = new THREE.Mesh(
+            new THREE.ConeGeometry(0.09, 0.26, 12),
+            this._mat(0xb0bbc4, { roughness: 0.35, metalness: 0.38 })
+        );
+        nose.rotation.x = Math.PI / 2;
+        nose.position.set(0, 0.08, 0.72);
+        nose.castShadow = true;
+        group.add(nose);
+
+        const cockpit = new THREE.Mesh(
+            new THREE.BoxGeometry(0.16, 0.12, 0.2),
+            this._mat(0x4cb8ff, { emissive: 0x2f8bcc, emissiveIntensity: 0.2, roughness: 0.18, metalness: 0.3 })
+        );
+        cockpit.position.set(0, 0.16, 0.18);
+        cockpit.castShadow = true;
+        group.add(cockpit);
+
+        const wingLeft = new THREE.Mesh(
+            new THREE.BoxGeometry(0.92, 0.04, 0.28),
+            this._mat(fc, { roughness: 0.38, metalness: 0.44, emissive: fc, emissiveIntensity: 0.08 })
+        );
+        wingLeft.position.set(-0.38, 0.08, 0.05);
+        wingLeft.rotation.z = 0.08;
+        wingLeft.castShadow = true;
+        group.add(wingLeft);
+        const wingRight = wingLeft.clone();
+        wingRight.position.x = 0.38;
+        wingRight.rotation.z = -0.08;
+        group.add(wingRight);
+
+        const tail = new THREE.Mesh(
+            new THREE.BoxGeometry(0.14, 0.28, 0.2),
+            this._mat(0x6f7882, { roughness: 0.46, metalness: 0.4 })
+        );
+        tail.position.set(0, 0.22, -0.42);
+        tail.castShadow = true;
+        group.add(tail);
+
+        for (const x of [-0.22, 0.22]) {
+            const rocketPod = new THREE.Mesh(
+                new THREE.BoxGeometry(0.12, 0.08, 0.36),
+                this._mat(0x434850, { roughness: 0.5, metalness: 0.42 })
+            );
+            rocketPod.position.set(x, -0.02, 0.08);
+            rocketPod.castShadow = true;
+            group.add(rocketPod);
+        }
+
+        const engineGlow = new THREE.PointLight(0x66d7ff, 0.9, 2.5);
+        engineGlow.position.set(0, 0.08, -0.7);
+        group.add(engineGlow);
+        group.userData.muzzleFlash = engineGlow;
+
+        group.userData.modelType = 'harrier';
+        group.userData.factionColor = fc;
+        return group;
+    }
+
     // ==================== ORE CRYSTALS ====================
 
     createOreCrystal() {

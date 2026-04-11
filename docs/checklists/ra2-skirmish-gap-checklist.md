@@ -68,7 +68,7 @@
 ### B3.2 步兵 / 载具 / 空军生产建筑
 - [x] Barracks
 - [x] War Factory
-- [ ] Airforce Command / Airfield
+- [x] Airforce Command / Airfield
 - [ ] Naval Yard
 
 ### B3.3 科技建筑
@@ -115,7 +115,7 @@
 - [ ] Repair IFV / support vehicle（如需要）
 
 ### B4.3 空军
-- [ ] Harrier / Black Eagle
+- [x] Harrier / Black Eagle（当前已补 Harrier）
 - [ ] Helicopter / transport air
 - [ ] Air unit ammo / return-to-base / rearm 机制
 - [ ] 防空锁定与空袭反馈
@@ -223,7 +223,7 @@
 - [ ] 多 build order
 - [ ] 阵营差异化 AI
 - [x] 护矿 / 骚扰矿车
-- [~] 防空意识（已补 Flak Track 反步兵/轻甲反制与 AI 出车逻辑，真正对空优先级仍待 air units 落地）
+- [~] 防空意识（已补 Harrier / Airfield、Flak Track 对空锁定与 AI 空袭出机逻辑，但真正按敌方空军密度切防空优先级仍未做完）
 - [ ] 修建筑 / 卖残血建筑等经济决策
 - [ ] 科技攀升
 - [ ] 防御建筑布局
@@ -277,7 +277,7 @@
 - [x] Battle Lab
 - [~] 更多载具与反制链（已补 V3 Artillery + Flak Track，仍缺 APC / 更完整的空地反制链）
 - [x] veterancy
-- [ ] air units
+- [x] air units（已补 Airfield + Harrier 基础空袭链路）
 - [x] more maps
 - [~] walls / bridges / garrison（已补 walls，bridges / garrison 仍未完成）
 

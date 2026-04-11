@@ -65,8 +65,10 @@ window.UNIT_TYPES = {
             infantry: 1.25,
             light: 1.1,
             heavy: 0.65,
-            building: 0.7
+            building: 0.7,
+            air: 1.55
         },
+        canAttackAir: true,
         producedBy: 'barracks',
         prerequisites: ['barracks', 'powerPlant']
     },
@@ -165,8 +167,10 @@ window.UNIT_TYPES = {
             infantry: 1.45,
             light: 1.2,
             heavy: 0.7,
-            building: 0.55
+            building: 0.55,
+            air: 1.75
         },
+        canAttackAir: true,
         producedBy: 'warFactory',
         prerequisites: ['warFactory', 'radarDome']
     },
@@ -215,5 +219,33 @@ window.UNIT_TYPES = {
         },
         producedBy: 'warFactory',
         prerequisites: ['warFactory', 'battleLab']
+    },
+    harrier: {
+        name: 'Harrier',
+        cost: 1400,
+        trainTime: 9500,
+        hp: 140,
+        speed: 1.85,
+        damage: 55,
+        range: 6.5,
+        fireRate: 2200,
+        sight: 8,
+        armorType: 'air',
+        role: 'aircraft',
+        projectileSpeed: 12.5,
+        weaponType: 'rocket',
+        damageProfile: {
+            infantry: 0.45,
+            light: 1.2,
+            heavy: 1.45,
+            building: 1.6,
+            air: 0.1
+        },
+        canAttackGround: true,
+        canAttackAir: false,
+        isAirUnit: true,
+        flightAltitude: 1.1,
+        producedBy: 'airfield',
+        prerequisites: ['airfield']
     }
 };

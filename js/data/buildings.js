@@ -91,6 +91,19 @@ window.BUILD_TYPES = {
         description: 'High-tech command lab that unlocks experimental armor.',
         prerequisites: ['constructionYard', 'powerPlant', 'refinery', 'radarDome', 'warFactory']
     },
+    airfield: {
+        name: 'Airfield',
+        cost: 1600,
+        buildTime: 9000,
+        hp: 700,
+        sight: 7,
+        size: 2,
+        powerSupply: 0,
+        powerDrain: 40,
+        production: ['harrier'],
+        description: 'Launches fast strike aircraft for surgical base raids.',
+        prerequisites: ['constructionYard', 'powerPlant', 'radarDome', 'warFactory']
+    },
     pillbox: {
         name: 'Pillbox',
         cost: 700,

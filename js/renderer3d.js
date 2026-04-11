@@ -229,6 +229,7 @@ class Renderer3D {
         else if (building.type === 'radarDome') mesh = this.models.createRadarDome(factionColor);
         else if (building.type === 'warFactory') mesh = this.models.createWarFactory(factionColor);
         else if (building.type === 'battleLab') mesh = this.models.createBattleLab(factionColor);
+        else if (building.type === 'airfield') mesh = this.models.createAirfield(factionColor);
         else if (building.type === 'pillbox') mesh = this.models.createPillbox(factionColor);
         else if (building.type === 'sentryGun') mesh = this.models.createSentryGun(factionColor);
         else if (building.type === 'sandbagWall') mesh = this.models.createSandbagWall(factionColor);
@@ -280,11 +281,12 @@ class Renderer3D {
         else if (unit.type === 'flakTrack') mesh = this.models.createFlakTrack(factionColor);
         else if (unit.type === 'artillery') mesh = this.models.createArtillery(factionColor);
         else if (unit.type === 'apocalypseTank') mesh = this.models.createApocalypseTank(factionColor);
+        else if (unit.type === 'harrier') mesh = this.models.createHarrier(factionColor);
         if (!mesh) return;
 
         mesh.position.set(
             unit.x * this.tileSize,
-            0,
+            unit.altitude || 0,
             unit.y * this.tileSize
         );
 
@@ -299,7 +301,7 @@ class Renderer3D {
         // Position
         mesh.position.set(
             unit.x * this.tileSize,
-            0,
+            unit.altitude || 0,
             unit.y * this.tileSize
         );
 
@@ -350,6 +352,11 @@ class Renderer3D {
                 const wobble = unit.type === 'artillery' ? 0.025 : (unit.type === 'apocalypseTank' ? 0.03 : (unit.type === 'flakTrack' ? 0.035 : 0.02));
                 mesh.userData.turret.rotation.y = Math.sin(this.time * 0.8 + unit.x) * wobble;
             }
+        } else if (unit.type === 'harrier') {
+            mesh.rotation.x = Math.sin(this.time * 5 + unit.x * 0.7) * 0.08;
+            mesh.position.y = (unit.altitude || 1.1) + Math.sin(this.time * 4 + unit.y) * 0.06;
+            const flashing = unit.fireRate > 0 && unit.fireTimer > unit.fireRate - 160;
+            this.models.flashMuzzle(mesh, flashing);
         } else if (unit.type === 'harvester') {
             mesh.rotation.x = 0;
             this.models.flashMuzzle(mesh, false);
@@ -659,6 +666,7 @@ class Renderer3D {
         else if (type === 'radarDome') model = this.models.createRadarDome(factionColor);
         else if (type === 'warFactory') model = this.models.createWarFactory(factionColor);
         else if (type === 'battleLab') model = this.models.createBattleLab(factionColor);
+        else if (type === 'airfield') model = this.models.createAirfield(factionColor);
         else if (type === 'pillbox') model = this.models.createPillbox(factionColor);
         else if (type === 'sentryGun') model = this.models.createSentryGun(factionColor);
         else if (type === 'sandbagWall') model = this.models.createSandbagWall(factionColor);
@@ -683,6 +691,10 @@ class Renderer3D {
         } else if (type === 'apocalypseTank') {
             model = this.models.createApocalypseTank(factionColor);
             model.scale.setScalar(2.15);
+        } else if (type === 'harrier') {
+            model = this.models.createHarrier(factionColor);
+            model.scale.setScalar(2.25);
+            model.rotation.x = -0.28;
         }
 
         if (model) {

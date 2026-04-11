@@ -549,6 +549,8 @@ class GameState {
             projectileSpeed: def.projectileSpeed || 8,
             weaponType: def.weaponType || 'rifle',
             damageProfile: def.damageProfile || null,
+            canAttackGround: def.canAttackGround !== false,
+            canAttackAir: !!def.canAttackAir,
             attackTarget: null,
             training: null, trainProgress: 0, trainQueue: [],
             rallyPoint: { x: tx + def.size + 1, y: ty + Math.floor(def.size / 2) },
@@ -576,6 +578,10 @@ class GameState {
             projectileSpeed: def.projectileSpeed || 8,
             weaponType: def.weaponType || 'rifle',
             damageProfile: def.damageProfile || null,
+            canAttackGround: def.canAttackGround !== false,
+            canAttackAir: !!def.canAttackAir,
+            isAirUnit: !!def.isAirUnit,
+            altitude: def.isAirUnit ? (def.flightAltitude || 1.1) : 0,
             captureRange: def.captureRange || 0,
             captureTarget: null,
             cargo: 0,
@@ -711,8 +717,20 @@ class GameState {
         return true;
     }
 
+    isAirUnit(entity) {
+        return !!(entity && entity.tx === undefined && (entity.isAirUnit || entity.armorType === 'air' || entity.role === 'aircraft'));
+    }
+
+    canEntityTarget(attacker, target) {
+        if (!attacker || !target) return false;
+        if (this.isAirUnit(target)) return !!attacker.canAttackAir;
+        if (target.tx !== undefined) return attacker.canAttackGround !== false;
+        return attacker.canAttackGround !== false;
+    }
+
     getTargetArmorClass(target) {
         if (!target) return 'light';
+        if (this.isAirUnit(target)) return 'air';
         if (target.tx !== undefined) return 'building';
         if (target.role === 'infantry' || target.role === 'anti-armor infantry' || target.role === 'anti-air infantry' || target.role === 'engineer') {
             return 'infantry';
@@ -1069,12 +1087,12 @@ class GameState {
         if (enemyUnit) {
             let issuedAttack = false;
             for (const u of this.selected) {
-                if (!this.canUnitReceiveCommand(u) || !this.isCombatUnit(u)) continue;
+                if (!this.canUnitReceiveCommand(u) || !this.isCombatUnit(u) || !this.canEntityTarget(u, enemyUnit)) continue;
                 u.captureTarget = null;
                 u.attackTarget = enemyUnit;
                 u.target = null;
                 u.state = 'attacking';
-                u.path = this.findPath(Math.round(u.x), Math.round(u.y), Math.floor(enemyUnit.x), Math.floor(enemyUnit.y));
+                u.path = this.isAirUnit(u) ? null : this.findPath(Math.round(u.x), Math.round(u.y), Math.floor(enemyUnit.x), Math.floor(enemyUnit.y));
                 u.pathIdx = 0;
                 issuedAttack = true;
             }
@@ -1095,12 +1113,12 @@ class GameState {
                     issuedOrder = true;
                     continue;
                 }
-                if (!this.isCombatUnit(u)) continue;
+                if (!this.isCombatUnit(u) || !this.canEntityTarget(u, enemyBuilding)) continue;
                 u.captureTarget = null;
                 u.attackTarget = enemyBuilding;
                 u.target = null;
                 u.state = 'attacking';
-                u.path = this.findPath(Math.round(u.x), Math.round(u.y), enemyBuilding.tx + 1, enemyBuilding.ty + 1);
+                u.path = this.isAirUnit(u) ? null : this.findPath(Math.round(u.x), Math.round(u.y), enemyBuilding.tx + 1, enemyBuilding.ty + 1);
                 u.pathIdx = 0;
                 issuedOrder = true;
             }
@@ -1355,6 +1373,11 @@ class GameState {
         unit.target = { x: tx, y: ty };
         unit.attackTarget = null;
         unit.state = state;
+        if (this.isAirUnit(unit)) {
+            unit.path = null;
+            unit.pathIdx = 0;
+            return;
+        }
         unit.path = this.findPath(Math.round(unit.x), Math.round(unit.y), Math.floor(tx), Math.floor(ty));
         unit.pathIdx = unit.path && unit.path.length > 1 && Math.hypot(unit.path[0].x - unit.x, unit.path[0].y - unit.y) < 0.5 ? 1 : 0;
     }
@@ -1872,8 +1895,9 @@ class GameState {
                         const sourceAnchor = this.getEntityAnchor(b);
                         const targetAnchor = this.getEntityAnchor(b.attackTarget);
                         const targetDead = !b.attackTarget || b.attackTarget.state === 'dead' || (b.attackTarget.hp ?? 0) <= 0;
+                        const targetInvalid = !this.canEntityTarget(b, b.attackTarget);
                         const targetOutOfSight = !sourceAnchor || !targetAnchor || Math.hypot(sourceAnchor.x - targetAnchor.x, sourceAnchor.y - targetAnchor.y) > b.sight + 0.5;
-                        if (targetDead || targetOutOfSight) {
+                        if (targetDead || targetInvalid || targetOutOfSight) {
                             b.attackTarget = this._findNearestEnemy(b, b.owner);
                         }
                         const activeTargetAnchor = this.getEntityAnchor(b.attackTarget);
@@ -1929,7 +1953,7 @@ class GameState {
 
                         const dist = Math.hypot(u.x - targetX, u.y - targetY);
 
-                        if ((at.hp !== undefined && at.hp <= 0) || at.state === 'dead') {
+                        if ((at.hp !== undefined && at.hp <= 0) || at.state === 'dead' || !this.canEntityTarget(u, at)) {
                             u.attackTarget = null;
                             u.state = 'idle';
                             continue;
@@ -1962,30 +1986,42 @@ class GameState {
                             }
                         }
 
-                        // Move toward attack target using pathfinding
-                        // Repath every 2s or if no path exists
-                        u._repathTimer = (u._repathTimer || 0) + dt;
-                        if (!u.path || u.path.length === 0 || u.pathIdx >= u.path.length || u._repathTimer > 2000) {
-                            u.path = this.findPath(Math.round(u.x), Math.round(u.y), Math.floor(targetX), Math.floor(targetY));
-                            u.pathIdx = 0;
-                            u._repathTimer = 0;
-                        }
-                        // Follow path waypoints
-                        if (u.path && u.pathIdx < u.path.length) {
-                            const wp = u.path[u.pathIdx];
-                            const dx = wp.x - u.x;
-                            const dy = wp.y - u.y;
-                            const d = Math.hypot(dx, dy);
-                            if (d < 0.2) {
-                                u.pathIdx++;
-                            } else if (d > 0.1) {
-                                const speed = u.speed * dt / 1000;
-                                u.x += (dx / d) * Math.min(speed, d);
-                                u.y += (dy / d) * Math.min(speed, d);
-                                this.faceToward(u, wp.x, wp.y);
+                        if (!this.isAirUnit(u)) {
+                            // Move toward attack target using pathfinding
+                            // Repath every 2s or if no path exists
+                            u._repathTimer = (u._repathTimer || 0) + dt;
+                            if (!u.path || u.path.length === 0 || u.pathIdx >= u.path.length || u._repathTimer > 2000) {
+                                u.path = this.findPath(Math.round(u.x), Math.round(u.y), Math.floor(targetX), Math.floor(targetY));
+                                u.pathIdx = 0;
+                                u._repathTimer = 0;
+                            }
+                            // Follow path waypoints
+                            if (u.path && u.pathIdx < u.path.length) {
+                                const wp = u.path[u.pathIdx];
+                                const dx = wp.x - u.x;
+                                const dy = wp.y - u.y;
+                                const d = Math.hypot(dx, dy);
+                                if (d < 0.2) {
+                                    u.pathIdx++;
+                                } else if (d > 0.1) {
+                                    const speed = u.speed * dt / 1000;
+                                    u.x += (dx / d) * Math.min(speed, d);
+                                    u.y += (dy / d) * Math.min(speed, d);
+                                    this.faceToward(u, wp.x, wp.y);
+                                }
+                            } else {
+                                // Fallback: direct move (shouldn't happen often)
+                                const dx = targetX - u.x;
+                                const dy = targetY - u.y;
+                                const d = Math.hypot(dx, dy);
+                                if (d > 0.1) {
+                                    const speed = u.speed * dt / 1000;
+                                    u.x += (dx / d) * Math.min(speed, d);
+                                    u.y += (dy / d) * Math.min(speed, d);
+                                    this.faceToward(u, targetX, targetY);
+                                }
                             }
                         } else {
-                            // Fallback: direct move (shouldn't happen often)
                             const dx = targetX - u.x;
                             const dy = targetY - u.y;
                             const d = Math.hypot(dx, dy);
@@ -2063,7 +2099,7 @@ class GameState {
                 // Engaging state: auto-engaged enemy during movement
                 if (u.state === 'engaging') {
                     const at = u.attackTarget;
-                    if (!at || (at.hp !== undefined && at.hp <= 0) || at.state === 'dead') {
+                    if (!at || (at.hp !== undefined && at.hp <= 0) || at.state === 'dead' || !this.canEntityTarget(u, at)) {
                         // Enemy dead → go idle (player must re-issue move command)
                         u.attackTarget = null;
                         u.state = 'idle';
@@ -2099,11 +2135,11 @@ class GameState {
                 }
 
                 // Unit separation force to prevent stacking
-                if (u.state !== 'dead') {
+                if (u.state !== 'dead' && !this.isAirUnit(u)) {
                     let pushX = 0, pushY = 0;
                     for (const p2 of this.players) {
                         for (const other of p2.units) {
-                            if (other === u || other.state === 'dead') continue;
+                            if (other === u || other.state === 'dead' || this.isAirUnit(other)) continue;
                             const sdx = u.x - other.x;
                             const sdy = u.y - other.y;
                             const sd = Math.hypot(sdx, sdy);
@@ -2156,14 +2192,14 @@ class GameState {
         for (let pi = 0; pi < this.players.length; pi++) {
             if (pi === ownerIdx) continue;
             for (const eu of this.players[pi].units) {
-                if (eu.state === 'dead' || eu.hp <= 0) continue;
+                if (eu.state === 'dead' || eu.hp <= 0 || !this.canEntityTarget(unit, eu)) continue;
                 const target = this.getEntityAnchor(eu);
                 if (!target) continue;
                 const d = Math.hypot(source.x - target.x, source.y - target.y);
                 if (d < bestDist) { bestDist = d; best = eu; }
             }
             for (const eb of this.players[pi].buildings) {
-                if (eb.hp <= 0) continue;
+                if (eb.hp <= 0 || !this.canEntityTarget(unit, eb)) continue;
                 const target = this.getEntityAnchor(eb);
                 if (!target) continue;
                 const d = Math.hypot(source.x - target.x, source.y - target.y);
@@ -2395,11 +2431,11 @@ class GameState {
         const anchor = this.getEntityAnchor(target);
         if (!anchor) return;
         for (const unit of units) {
-            if (!unit || unit.state === 'dead' || !this.isCombatUnit(unit)) continue;
+            if (!unit || unit.state === 'dead' || !this.isCombatUnit(unit) || !this.canEntityTarget(unit, target)) continue;
             unit.attackTarget = target;
             unit.target = null;
             unit.state = 'attacking';
-            unit.path = this.findPath(Math.floor(unit.x), Math.floor(unit.y), Math.floor(anchor.x), Math.floor(anchor.y));
+            unit.path = this.isAirUnit(unit) ? null : this.findPath(Math.floor(unit.x), Math.floor(unit.y), Math.floor(anchor.x), Math.floor(anchor.y));
             unit.pathIdx = 0;
         }
     }
@@ -2492,6 +2528,7 @@ class GameState {
         if (!builtTypes.has('barracks') && tryBuild('barracks')) return;
         if (!builtTypes.has('radarDome') && tryBuild('radarDome')) return;
         if (!builtTypes.has('warFactory') && tryBuild('warFactory')) return;
+        if (!builtTypes.has('airfield') && builtTypes.has('warFactory') && ai.money >= BUILD_TYPES.airfield.cost + 1000 && tryBuild('airfield')) return;
         if (!builtTypes.has('battleLab') && builtTypes.has('warFactory') && ai.money >= BUILD_TYPES.battleLab.cost && tryBuild('battleLab')) return;
         if (ai.buildings.filter(b => b.type === 'powerPlant').length < 2 && ai.money > 2200 && tryBuild('powerPlant')) return;
         if (builtTypes.has('barracks') && ai.buildings.filter(b => b.type === 'pillbox' && b.hp > 0).length < 1 && ai.money >= BUILD_TYPES.pillbox.cost && tryBuild('pillbox')) return;
@@ -2505,6 +2542,7 @@ class GameState {
         const flakTrackFactories = this.getProductionBuildings(ai, 'flakTrack');
         const artilleryFactories = this.getProductionBuildings(ai, 'artillery');
         const apocalypseFactories = this.getProductionBuildings(ai, 'apocalypseTank');
+        const airfields = this.getProductionBuildings(ai, 'harrier');
         const enemyPlayer = this.players[0];
         const enemyHeavyUnits = enemyPlayer.units.filter(u => u.state !== 'dead' && u.armorType === 'heavy').length;
         const enemyBuildings = enemyPlayer.buildings.filter(b => b.built && b.hp > 0).length;
@@ -2534,6 +2572,17 @@ class GameState {
             ai.money -= UNIT_TYPES.artillery.cost;
             if (!wf.training) wf.training = 'artillery';
             else wf.trainQueue.push('artillery');
+            return;
+        }
+
+        const aiHarrierCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'harrier').length + this._getTotalTrainQueue(ai, 'harrier');
+        const enemyEcoTargets = enemyPlayer.units.filter(u => u.state !== 'dead' && u.type === 'harvester').length + enemyPlayer.buildings.filter(b => b.built && b.hp > 0 && (b.type === 'refinery' || b.type === 'powerPlant')).length;
+        const shouldPrioritizeHarriers = airfields.length > 0 && ai.money >= UNIT_TYPES.harrier.cost && (enemyDefenses >= 1 || enemyEcoTargets >= 2 || enemyBuildings >= 5) && aiHarrierCount < 2;
+        if (shouldPrioritizeHarriers) {
+            const airfield = airfields.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
+            ai.money -= UNIT_TYPES.harrier.cost;
+            if (!airfield.training) airfield.training = 'harrier';
+            else airfield.trainQueue.push('harrier');
             return;
         }
 
@@ -3046,12 +3095,12 @@ class GameState {
         const p = this.players[this.currentPlayer];
 
         if (activeTab === 'buildings') {
-            ['powerPlant', 'refinery', 'barracks', 'radarDome', 'warFactory', 'battleLab', 'pillbox', 'sentryGun', 'sandbagWall'].forEach(type => {
+            ['powerPlant', 'refinery', 'barracks', 'radarDome', 'warFactory', 'airfield', 'battleLab', 'pillbox', 'sentryGun', 'sandbagWall'].forEach(type => {
                 const def = BUILD_TYPES[type];
                 this.addBuildItem(container, type, def.name, def.cost, def.description, false);
             });
         } else {
-            ['soldier', 'rocketInfantry', 'flakTrooper', 'engineer', 'harvester', 'tank', 'flakTrack', 'artillery', 'apocalypseTank', 'mcv'].forEach(type => {
+            ['soldier', 'rocketInfantry', 'flakTrooper', 'engineer', 'harvester', 'tank', 'flakTrack', 'artillery', 'harrier', 'apocalypseTank', 'mcv'].forEach(type => {
                 const def = UNIT_TYPES[type];
                 const description = type === 'engineer' ? 'Captures enemy buildings on contact.' : def.role;
                 this.addBuildItem(container, type, def.name, def.cost, description, true);
