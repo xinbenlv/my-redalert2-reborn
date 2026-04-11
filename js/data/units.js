@@ -149,6 +149,29 @@ window.UNIT_TYPES = {
         producedBy: 'warFactory',
         prerequisites: ['warFactory']
     },
+    apc: {
+        name: 'APC',
+        cost: 850,
+        trainTime: 6500,
+        hp: 220,
+        speed: 1.04,
+        damage: 18,
+        range: 5.2,
+        fireRate: 420,
+        sight: 7,
+        armorType: 'light',
+        role: 'infantry fighting vehicle',
+        projectileSpeed: 10.2,
+        weaponType: 'autocannon',
+        damageProfile: {
+            infantry: 1.85,
+            light: 1.05,
+            heavy: 0.45,
+            building: 0.4
+        },
+        producedBy: 'warFactory',
+        prerequisites: ['warFactory']
+    },
     flakTrack: {
         name: 'Flak Track',
         cost: 1000,

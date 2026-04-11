@@ -1312,6 +1312,76 @@ class ModelFactory {
         return group;
     }
 
+    createAPC(factionColor) {
+        const fc = this._factionColor(factionColor);
+        const group = new THREE.Group();
+        const hullMat = this._mat(0x6a737e, { roughness: 0.52, metalness: 0.34 });
+        const accentMat = this._mat(fc, { roughness: 0.4, metalness: 0.42, emissive: fc, emissiveIntensity: 0.08 });
+
+        const lowerHull = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.2, 1.12), hullMat);
+        lowerHull.position.y = 0.17;
+        lowerHull.castShadow = true;
+        group.add(lowerHull);
+
+        const upperHull = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.2, 0.74), this._mat(0x848d96, { roughness: 0.44, metalness: 0.28 }));
+        upperHull.position.set(0, 0.34, -0.02);
+        upperHull.castShadow = true;
+        group.add(upperHull);
+
+        const cabinStripe = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.06, 0.08), accentMat);
+        cabinStripe.position.set(0, 0.3, -0.4);
+        cabinStripe.castShadow = true;
+        group.add(cabinStripe);
+
+        const turret = new THREE.Group();
+        turret.position.set(0, 0.44, 0.16);
+        group.add(turret);
+        group.userData.turret = turret;
+
+        const turretBase = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.2, 0.16, 10), accentMat);
+        turretBase.castShadow = true;
+        turret.add(turretBase);
+
+        const turretShield = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.16, 0.12), this._mat(0x555d66, { roughness: 0.5, metalness: 0.35 }));
+        turretShield.position.set(0, 0.06, 0.1);
+        turretShield.castShadow = true;
+        turret.add(turretShield);
+
+        const barrel = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.035, 0.04, 0.74, 8),
+            this._mat(0x2f343b, { roughness: 0.36, metalness: 0.64 })
+        );
+        barrel.rotation.x = Math.PI / 2;
+        barrel.position.set(0, 0.04, 0.42);
+        barrel.castShadow = true;
+        turret.add(barrel);
+        group.userData.barrel = barrel;
+
+        const rearDoor = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.18, 0.08), this._mat(0x444c55, { roughness: 0.58, metalness: 0.22 }));
+        rearDoor.position.set(0, 0.24, 0.54);
+        rearDoor.castShadow = true;
+        group.add(rearDoor);
+
+        for (const x of [-0.36, 0.36]) {
+            const track = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.16, 1.18), this._mat(0x20242a, { roughness: 0.84 }));
+            track.position.set(x, 0.1, 0);
+            group.add(track);
+        }
+
+        const frontBumper = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.08, 0.12), this._mat(0x2d3138, { roughness: 0.48, metalness: 0.52 }));
+        frontBumper.position.set(0, 0.12, -0.56);
+        group.add(frontBumper);
+
+        const muzzleFlash = new THREE.PointLight(0xffcc66, 0, 2.3);
+        muzzleFlash.position.set(0, 0.5, 0.88);
+        group.add(muzzleFlash);
+        group.userData.muzzleFlash = muzzleFlash;
+
+        group.userData.modelType = 'apc';
+        group.userData.factionColor = fc;
+        return group;
+    }
+
     createApocalypseTank(factionColor) {
         const fc = this._factionColor(factionColor);
         const group = new THREE.Group();
