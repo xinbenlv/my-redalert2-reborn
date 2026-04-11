@@ -26,6 +26,12 @@ const MAP_PROFILES = {
         briefing: 'A harder center fight with a broad crossing and exposed ore lanes.',
         spawnPoints: [{ x: 10, y: 10 }, { x: MAP_SIZE - 13, y: MAP_SIZE - 13 }],
     },
+    'twin-rivers': {
+        id: 'twin-rivers',
+        name: 'Twin Rivers',
+        briefing: 'Two river channels carve the battlefield, with a contested central ore basin and safer flank expansions.',
+        spawnPoints: [{ x: 7, y: MAP_SIZE - 10 }, { x: MAP_SIZE - 10, y: 8 }],
+    },
 };
 const DEFAULT_MATCH_CONFIG = {
     startingCredits: 6500,
@@ -393,7 +399,29 @@ class GameState {
 
     // ==================== MAP GENERATION ====================
     generateMap() {
-        const isCrossroads = this.mapProfile?.id === 'crossroads';
+        const mapId = this.mapProfile?.id || 'classic';
+        const oreFieldsByMap = {
+            classic: [
+                { x: 15, y: 15, r: 3 },
+                { x: MAP_SIZE - 15, y: MAP_SIZE - 15, r: 3 },
+                { x: MAP_SIZE / 2, y: MAP_SIZE / 2, r: 3 },
+            ],
+            crossroads: [
+                { x: 10, y: 10, r: 3.2 },
+                { x: MAP_SIZE - 11, y: MAP_SIZE - 11, r: 3.2 },
+                { x: MAP_SIZE / 2 - 5, y: MAP_SIZE / 2, r: 2.4 },
+                { x: MAP_SIZE / 2 + 5, y: MAP_SIZE / 2, r: 2.4 },
+            ],
+            'twin-rivers': [
+                { x: 10, y: MAP_SIZE - 11, r: 3.2 },
+                { x: MAP_SIZE - 11, y: 10, r: 3.2 },
+                { x: MAP_SIZE / 2, y: MAP_SIZE / 2, r: 4 },
+                { x: MAP_SIZE / 2 - 8, y: MAP_SIZE / 2 + 4, r: 2.4 },
+                { x: MAP_SIZE / 2 + 8, y: MAP_SIZE / 2 - 4, r: 2.4 },
+            ],
+        };
+        const oreFields = oreFieldsByMap[mapId] || oreFieldsByMap.classic;
+
         for (let y = 0; y < MAP_SIZE; y++) {
             this.map[y] = [];
             this.fog[y] = [];
@@ -404,30 +432,27 @@ class GameState {
                 const distFromCenter = Math.sqrt(dx ** 2 + dy ** 2);
 
                 if (distFromCenter > MAP_SIZE * 0.42) type = 'water';
-                if (isCrossroads) {
+                if (mapId === 'crossroads') {
                     const verticalRiver = Math.abs(x - MAP_SIZE / 2) < 1.35 && y > 6 && y < MAP_SIZE - 6;
                     const horizontalRiver = Math.abs(y - MAP_SIZE / 2) < 1.35 && x > 6 && x < MAP_SIZE - 6;
                     const centralBridge = Math.abs(x - MAP_SIZE / 2) < 3 && Math.abs(y - MAP_SIZE / 2) < 3;
                     if ((verticalRiver || horizontalRiver) && !centralBridge) type = 'water';
+                } else if (mapId === 'twin-rivers') {
+                    const riverLeftX = MAP_SIZE / 2 - 5 + Math.sin(y / 4) * 1.5;
+                    const riverRightX = MAP_SIZE / 2 + 5 + Math.cos(y / 4) * 1.5;
+                    const leftRiver = Math.abs(x - riverLeftX) < 1.2 && y > 5 && y < MAP_SIZE - 5;
+                    const rightRiver = Math.abs(x - riverRightX) < 1.2 && y > 5 && y < MAP_SIZE - 5;
+                    const centralFord = Math.abs(y - MAP_SIZE / 2) < 2.5 && x > MAP_SIZE / 2 - 8 && x < MAP_SIZE / 2 + 8;
+                    const flankFords = (Math.abs(y - 10) < 1.8 || Math.abs(y - (MAP_SIZE - 10)) < 1.8)
+                        && x > MAP_SIZE / 2 - 9 && x < MAP_SIZE / 2 + 9;
+                    if ((leftRiver || rightRiver) && !(centralFord || flankFords)) type = 'water';
                 } else {
                     const riverX = MAP_SIZE / 2 + Math.sin(y / 5) * 3;
                     if (Math.abs(x - riverX) < 1.5 && y > 10 && y < MAP_SIZE - 10) type = 'water';
                 }
 
-                if (type === 'grass') {
-                    const oreFields = isCrossroads
-                        ? [
-                            { x: 10, y: 10, r: 3.2 },
-                            { x: MAP_SIZE - 11, y: MAP_SIZE - 11, r: 3.2 },
-                            { x: MAP_SIZE / 2 - 5, y: MAP_SIZE / 2, r: 2.4 },
-                            { x: MAP_SIZE / 2 + 5, y: MAP_SIZE / 2, r: 2.4 },
-                        ]
-                        : [
-                            { x: 15, y: 15, r: 3 },
-                            { x: MAP_SIZE - 15, y: MAP_SIZE - 15, r: 3 },
-                            { x: MAP_SIZE / 2, y: MAP_SIZE / 2, r: 3 },
-                        ];
-                    if (oreFields.some(field => Math.hypot(x - field.x, y - field.y) < field.r)) type = 'ore';
+                if (type === 'grass' && oreFields.some(field => Math.hypot(x - field.x, y - field.y) < field.r)) {
+                    type = 'ore';
                 }
 
                 this.map[y][x] = {
