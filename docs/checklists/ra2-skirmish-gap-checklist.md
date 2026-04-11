@@ -78,7 +78,7 @@
 - [ ] 秘密实验室 / tech pickup 机制（可选）
 
 ### B3.4 防御建筑
-- [ ] Pillbox / Sentry Gun 级基础防御
+- [x] Pillbox / Sentry Gun 级基础防御
 - [ ] Patriot / Flak Cannon / Tesla Coil / Prism Tower 等阵营防御
 - [ ] 防空建筑
 - [ ] 围墙（Wall / Sandbag / Concrete Wall）
@@ -269,7 +269,7 @@
 - [x] Radar 独立建筑化
 - [x] 取消生产 / 退款
 - [x] waypoint / rally 可视化
-- [ ] 基础防御建筑（至少 2 个）
+- [x] 基础防御建筑（至少 2 个）
 - [ ] AI 护矿与骚扰
 - [ ] 更完整的 skirmish setup
 

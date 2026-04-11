@@ -729,6 +729,109 @@ class ModelFactory {
         return group;
     }
 
+    createPillbox(factionColor) {
+        const fc = this._factionColor(factionColor);
+        const group = new THREE.Group();
+
+        const slab = new THREE.Mesh(
+            new THREE.BoxGeometry(0.92, 0.12, 0.92),
+            this._mat(0x6f6a63, { roughness: 0.92, metalness: 0.08 })
+        );
+        slab.position.y = 0.06;
+        group.add(slab);
+
+        const bunker = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.34, 0.42, 0.42, 8),
+            this._mat(0x8f7d6c, { roughness: 0.88, metalness: 0.06 })
+        );
+        bunker.position.y = 0.27;
+        bunker.castShadow = true;
+        group.add(bunker);
+
+        const hatch = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.18, 0.2, 0.06, 10),
+            this._mat(0x45484c, { roughness: 0.42, metalness: 0.52 })
+        );
+        hatch.position.y = 0.48;
+        group.add(hatch);
+
+        const slit = new THREE.Mesh(
+            new THREE.BoxGeometry(0.34, 0.08, 0.08),
+            this._mat(0x1e1f22, { roughness: 0.95, metalness: 0.02 })
+        );
+        slit.position.set(0, 0.28, 0.34);
+        group.add(slit);
+
+        const barrel = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.03, 0.03, 0.42, 8),
+            this._mat(0x2a2c30, { roughness: 0.45, metalness: 0.55 })
+        );
+        barrel.rotation.x = Math.PI / 2;
+        barrel.position.set(0, 0.28, 0.5);
+        barrel.castShadow = true;
+        group.add(barrel);
+
+        const stripe = new THREE.Mesh(
+            new THREE.BoxGeometry(0.72, 0.06, 0.06),
+            this._mat(fc, { roughness: 0.45, metalness: 0.25 })
+        );
+        stripe.position.set(0, 0.16, -0.28);
+        group.add(stripe);
+
+        group.userData.modelType = 'pillbox';
+        group.userData.factionColor = fc;
+        return group;
+    }
+
+    createSentryGun(factionColor) {
+        const fc = this._factionColor(factionColor);
+        const group = new THREE.Group();
+
+        const base = new THREE.Mesh(
+            new THREE.BoxGeometry(0.96, 0.16, 0.96),
+            this._mat(0x65686c, { roughness: 0.82, metalness: 0.12 })
+        );
+        base.position.y = 0.08;
+        group.add(base);
+
+        const pedestal = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.14, 0.18, 0.3, 10),
+            this._mat(0x868c93, { roughness: 0.55, metalness: 0.35 })
+        );
+        pedestal.position.y = 0.26;
+        pedestal.castShadow = true;
+        group.add(pedestal);
+
+        const turret = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.22, 0.26, 0.18, 12),
+            this._mat(fc, { roughness: 0.45, metalness: 0.4 })
+        );
+        turret.position.y = 0.42;
+        turret.castShadow = true;
+        group.add(turret);
+
+        const barrel = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.05, 0.06, 0.56, 8),
+            this._mat(0x31343a, { roughness: 0.42, metalness: 0.58 })
+        );
+        barrel.rotation.x = Math.PI / 2;
+        barrel.position.set(0, 0.43, 0.34);
+        barrel.castShadow = true;
+        group.add(barrel);
+
+        const ammoRing = new THREE.Mesh(
+            new THREE.TorusGeometry(0.26, 0.04, 8, 18),
+            this._mat(fc, { roughness: 0.35, metalness: 0.5, emissive: fc, emissiveIntensity: 0.08 })
+        );
+        ammoRing.rotation.x = Math.PI / 2;
+        ammoRing.position.y = 0.25;
+        group.add(ammoRing);
+
+        group.userData.modelType = 'sentryGun';
+        group.userData.factionColor = fc;
+        return group;
+    }
+
     createHarvester(factionColor) {
         const fc = this._factionColor(factionColor);
         const group = new THREE.Group();

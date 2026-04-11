@@ -209,6 +209,14 @@ class GameState {
             hp: def.hp, maxHp: def.hp,
             built: true, buildProgress: 1,
             sight: def.sight, size: def.size,
+            damage: def.damage || 0,
+            range: def.range || 0,
+            fireRate: def.fireRate || 0,
+            fireTimer: 0,
+            projectileSpeed: def.projectileSpeed || 8,
+            weaponType: def.weaponType || 'rifle',
+            damageProfile: def.damageProfile || null,
+            attackTarget: null,
             training: null, trainProgress: 0, trainQueue: [],
             rallyPoint: { x: tx + def.size + 1, y: ty + Math.floor(def.size / 2) },
             oreStored: 0
@@ -767,6 +775,10 @@ class GameState {
 
     isCombatUnit(unit) {
         return unit && unit.state !== 'dead' && unit.damage > 0;
+    }
+
+    isDefensiveBuilding(building) {
+        return !!(building && building.hp > 0 && building.built && (building.damage || 0) > 0);
     }
 
     getProductionBuildings(player, unitType) {
@@ -1331,6 +1343,7 @@ class GameState {
         for (const p of this.players) {
             const buildSpeed = POWER_SYSTEM.getBuildSpeedMultiplier(p);
             for (const b of p.buildings) {
+                b.fireTimer = Math.max(0, (b.fireTimer || 0) - dt);
                 if (!b.built) {
                     b.buildProgress += (dt / BUILD_TYPES[b.type].buildTime) * buildSpeed;
                     if (b.buildProgress >= 1) {
@@ -1378,6 +1391,29 @@ class GameState {
                                 this.eva(`${unitDef.name} ready.${qLeft > 0 ? ` (${qLeft} queued)` : ''}`);
                                 this._updateQueueBadge();
                                 this.updateUI();
+                            }
+                        }
+                    }
+                }
+
+                if (this.isDefensiveBuilding(b)) {
+                    const defensesPowered = !POWER_SYSTEM.isLowPower(p);
+                    if (!defensesPowered) {
+                        b.attackTarget = null;
+                    } else {
+                        const sourceAnchor = this.getEntityAnchor(b);
+                        const targetAnchor = this.getEntityAnchor(b.attackTarget);
+                        const targetDead = !b.attackTarget || b.attackTarget.state === 'dead' || (b.attackTarget.hp ?? 0) <= 0;
+                        const targetOutOfSight = !sourceAnchor || !targetAnchor || Math.hypot(sourceAnchor.x - targetAnchor.x, sourceAnchor.y - targetAnchor.y) > b.sight + 0.5;
+                        if (targetDead || targetOutOfSight) {
+                            b.attackTarget = this._findNearestEnemy(b, b.owner);
+                        }
+                        const activeTargetAnchor = this.getEntityAnchor(b.attackTarget);
+                        if (sourceAnchor && activeTargetAnchor) {
+                            const distance = Math.hypot(sourceAnchor.x - activeTargetAnchor.x, sourceAnchor.y - activeTargetAnchor.y);
+                            if (distance <= b.range && b.fireTimer <= 0) {
+                                b.fireTimer = b.fireRate;
+                                this.fireAt(b, b.attackTarget);
                             }
                         }
                     }
@@ -1642,20 +1678,23 @@ class GameState {
     }
 
     _findNearestEnemy(unit, ownerIdx) {
-        let best = null, bestDist = unit.sight + 1;
+        const source = this.getEntityAnchor(unit);
+        if (!source) return null;
+        let best = null, bestDist = (unit.sight || 0) + 1;
         for (let pi = 0; pi < this.players.length; pi++) {
             if (pi === ownerIdx) continue;
-            // Check enemy units
             for (const eu of this.players[pi].units) {
                 if (eu.state === 'dead' || eu.hp <= 0) continue;
-                const d = Math.hypot(unit.x - eu.x, unit.y - eu.y);
+                const target = this.getEntityAnchor(eu);
+                if (!target) continue;
+                const d = Math.hypot(source.x - target.x, source.y - target.y);
                 if (d < bestDist) { bestDist = d; best = eu; }
             }
-            // Check enemy buildings
             for (const eb of this.players[pi].buildings) {
                 if (eb.hp <= 0) continue;
-                const bx = eb.tx + 1, by = eb.ty + 1;
-                const d = Math.hypot(unit.x - bx, unit.y - by);
+                const target = this.getEntityAnchor(eb);
+                if (!target) continue;
+                const d = Math.hypot(source.x - target.x, source.y - target.y);
                 if (d < bestDist) { bestDist = d; best = eb; }
             }
         }
@@ -1672,11 +1711,14 @@ class GameState {
     }
 
     fireAt(u, target) {
-        const tx = target.x !== undefined ? target.x : target.tx + 1;
-        const ty = target.y !== undefined ? target.y : target.ty + 1;
+        const source = this.getEntityAnchor(u);
+        const targetAnchor = this.getEntityAnchor(target);
+        if (!source || !targetAnchor) return;
+        const tx = targetAnchor.x;
+        const ty = targetAnchor.y;
 
         this.projectiles.push({
-            x: u.x, y: u.y,
+            x: source.x, y: source.y,
             tx, ty,
             speed: u.projectileSpeed || 8,
             damage: u.damage,
@@ -1815,6 +1857,8 @@ class GameState {
         if (!builtTypes.has('radarDome') && tryBuild('radarDome')) return;
         if (!builtTypes.has('warFactory') && tryBuild('warFactory')) return;
         if (ai.buildings.filter(b => b.type === 'powerPlant').length < 2 && ai.money > 2200 && tryBuild('powerPlant')) return;
+        if (builtTypes.has('barracks') && ai.buildings.filter(b => b.type === 'pillbox' && b.hp > 0).length < 1 && ai.money >= BUILD_TYPES.pillbox.cost && tryBuild('pillbox')) return;
+        if (builtTypes.has('warFactory') && ai.buildings.filter(b => b.type === 'sentryGun' && b.hp > 0).length < 1 && ai.money >= BUILD_TYPES.sentryGun.cost && tryBuild('sentryGun')) return;
 
         const harvesters = ai.units.filter(u => u.type === 'harvester' && u.state !== 'dead').length;
         const refineries = ai.buildings.filter(b => b.type === 'refinery' && b.built && b.hp > 0).length;
@@ -2330,7 +2374,7 @@ class GameState {
         const p = this.players[this.currentPlayer];
 
         if (activeTab === 'buildings') {
-            ['powerPlant', 'refinery', 'barracks', 'radarDome', 'warFactory'].forEach(type => {
+            ['powerPlant', 'refinery', 'barracks', 'radarDome', 'warFactory', 'pillbox', 'sentryGun'].forEach(type => {
                 const def = BUILD_TYPES[type];
                 this.addBuildItem(container, type, def.name, def.cost, def.description, false);
             });
@@ -2462,6 +2506,8 @@ class GameState {
                 if (def.powerSupply) statusBits.push(`Power +${def.powerSupply}`);
                 if (def.powerDrain) statusBits.push(`Drain ${def.powerDrain}`);
                 if (def.providesRadar) statusBits.push(this.hasOperationalRadar(this.players[s.owner]) ? 'Radar online' : 'Radar offline');
+                if (this.isDefensiveBuilding(s)) statusBits.push(`DMG ${s.damage} | RNG ${s.range}`);
+                if (this.isDefensiveBuilding(s) && POWER_SYSTEM.isLowPower(this.players[s.owner])) statusBits.push('Weapons offline');
                 if (s.repairing) statusBits.push('Repairing');
                 if (s.rallyPoint && this.canSetRallyPoint(s)) statusBits.push(`Rally: ${Math.round(s.rallyPoint.x)}, ${Math.round(s.rallyPoint.y)}`);
                 const canRepair = this.canRepairBuilding(this.players[s.owner], s);

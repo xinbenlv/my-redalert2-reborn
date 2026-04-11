@@ -64,5 +64,51 @@ window.BUILD_TYPES = {
         production: ['harvester', 'tank'],
         description: 'Produces vehicles.',
         prerequisites: ['powerPlant', 'refinery', 'barracks']
+    },
+    pillbox: {
+        name: 'Pillbox',
+        cost: 700,
+        buildTime: 4500,
+        hp: 420,
+        sight: 7,
+        size: 1,
+        powerSupply: 0,
+        powerDrain: 10,
+        damage: 12,
+        range: 4.8,
+        fireRate: 500,
+        projectileSpeed: 11,
+        weaponType: 'rifle',
+        damageProfile: {
+            infantry: 1.3,
+            light: 0.9,
+            heavy: 0.4,
+            building: 0.45
+        },
+        description: 'Rapid anti-infantry bunker defense.',
+        prerequisites: ['powerPlant', 'barracks']
+    },
+    sentryGun: {
+        name: 'Sentry Gun',
+        cost: 950,
+        buildTime: 5500,
+        hp: 520,
+        sight: 7,
+        size: 1,
+        powerSupply: 0,
+        powerDrain: 15,
+        damage: 30,
+        range: 5.5,
+        fireRate: 1300,
+        projectileSpeed: 10,
+        weaponType: 'cannon',
+        damageProfile: {
+            infantry: 0.7,
+            light: 1.05,
+            heavy: 1.25,
+            building: 1.1
+        },
+        description: 'Powered turret for anti-vehicle defense.',
+        prerequisites: ['powerPlant', 'refinery', 'barracks']
     }
 };

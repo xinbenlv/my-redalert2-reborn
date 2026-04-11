@@ -227,6 +227,8 @@ class Renderer3D {
         else if (building.type === 'powerPlant') mesh = this.models.createPowerPlant(factionColor);
         else if (building.type === 'radarDome') mesh = this.models.createRadarDome(factionColor);
         else if (building.type === 'warFactory') mesh = this.models.createWarFactory(factionColor);
+        else if (building.type === 'pillbox') mesh = this.models.createPillbox(factionColor);
+        else if (building.type === 'sentryGun') mesh = this.models.createSentryGun(factionColor);
 
         if (!mesh) return;
 
@@ -476,6 +478,8 @@ class Renderer3D {
             else if (type === 'powerPlant') this._placementPreview = this.models.createPowerPlant(factionColor);
             else if (type === 'radarDome') this._placementPreview = this.models.createRadarDome(factionColor);
             else if (type === 'warFactory') this._placementPreview = this.models.createWarFactory(factionColor);
+            else if (type === 'pillbox') this._placementPreview = this.models.createPillbox(factionColor);
+            else if (type === 'sentryGun') this._placementPreview = this.models.createSentryGun(factionColor);
             this._placementPreview.traverse(child => {
                 if (child.material) {
                     child.material = child.material.clone();
@@ -620,6 +624,8 @@ class Renderer3D {
         else if (type === 'powerPlant') model = this.models.createPowerPlant(factionColor);
         else if (type === 'radarDome') model = this.models.createRadarDome(factionColor);
         else if (type === 'warFactory') model = this.models.createWarFactory(factionColor);
+        else if (type === 'pillbox') model = this.models.createPillbox(factionColor);
+        else if (type === 'sentryGun') model = this.models.createSentryGun(factionColor);
         else if (type === 'soldier' || type === 'rocketInfantry' || type === 'flakTrooper' || type === 'engineer') {
             model = this.models.createSoldier(factionColor);
             model.scale.setScalar(4);
