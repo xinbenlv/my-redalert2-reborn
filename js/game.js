@@ -49,7 +49,7 @@ const VETERANCY_BONUSES = {
     elite: { hp: 1.28, damage: 1.3, fireRate: 0.8 },
 };
 const TRANSPORTABLE_INFANTRY_TYPES = new Set(['soldier', 'rocketInfantry', 'flakTrooper', 'engineer']);
-const NON_VEHICLE_ROLES = new Set(['infantry', 'anti-armor infantry', 'anti-air infantry', 'engineer']);
+const NON_VEHICLE_ROLES = new Set(['infantry', 'anti-armor infantry', 'anti-air infantry', 'engineer', 'attack dog']);
 
 function normalizeMatchConfig(config = {}) {
     const startingCredits = Number(config.startingCredits);
@@ -597,7 +597,9 @@ class GameState {
             armorType: def.armorType,
             projectileSpeed: def.projectileSpeed || 8,
             weaponType: def.weaponType || 'rifle',
+            directFire: !!def.directFire,
             damageProfile: def.damageProfile || null,
+            targetArmorClasses: Array.isArray(def.targetArmorClasses) ? [...def.targetArmorClasses] : null,
             canAttackGround: def.canAttackGround !== false,
             canAttackAir: !!def.canAttackAir,
             isAirUnit: !!def.isAirUnit,
@@ -760,9 +762,19 @@ class GameState {
     canEntityTarget(attacker, target) {
         if (!attacker || !target) return false;
         if (this.isAirUnit(attacker) && attacker.ammoCapacity > 0 && attacker.ammo <= 0) return false;
-        if (this.isAirUnit(target)) return !!attacker.canAttackAir;
-        if (target.tx !== undefined) return attacker.canAttackGround !== false;
-        return attacker.canAttackGround !== false;
+        if (this.isAirUnit(target)) {
+            if (!attacker.canAttackAir) return false;
+            const targetArmorClass = this.getTargetArmorClass(target);
+            return !Array.isArray(attacker.targetArmorClasses) || attacker.targetArmorClasses.includes(targetArmorClass);
+        }
+        if (target.tx !== undefined) {
+            if (attacker.canAttackGround === false) return false;
+            const targetArmorClass = this.getTargetArmorClass(target);
+            return !Array.isArray(attacker.targetArmorClasses) || attacker.targetArmorClasses.includes(targetArmorClass);
+        }
+        if (attacker.canAttackGround === false) return false;
+        const targetArmorClass = this.getTargetArmorClass(target);
+        return !Array.isArray(attacker.targetArmorClasses) || attacker.targetArmorClasses.includes(targetArmorClass);
     }
 
     isGarrisonBuilding(building) {
@@ -810,7 +822,7 @@ class GameState {
         if (!target) return 'light';
         if (this.isAirUnit(target)) return 'air';
         if (target.tx !== undefined) return 'building';
-        if (target.role === 'infantry' || target.role === 'anti-armor infantry' || target.role === 'anti-air infantry' || target.role === 'engineer') {
+        if (target.role === 'infantry' || target.role === 'anti-armor infantry' || target.role === 'anti-air infantry' || target.role === 'engineer' || target.role === 'attack dog') {
             return 'infantry';
         }
         return target.armorType || 'light';
@@ -2934,6 +2946,26 @@ class GameState {
         const tx = targetAnchor.x;
         const ty = targetAnchor.y;
 
+        if (u.directFire) {
+            const directDamage = this.getDamageAgainstTarget(u.damage, u.damageProfile, target);
+            if (directDamage > 0) {
+                target.hp -= directDamage;
+                if (u.owner !== target.owner) this.grantVeterancy(u, directDamage);
+                target._lastAttackerOwner = u.owner;
+                target._lastAttackerUnit = u;
+                target._lastHitTime = Date.now();
+                if (target.hp <= 0) {
+                    if (target.tx !== undefined) {
+                        target.hp = Math.max(0, target.hp);
+                    } else {
+                        this.markUnitDestroyed(target, u.owner, u);
+                    }
+                }
+            }
+            this.effects.push({ type: 'hit', x: tx, y: ty, frame: 0, timer: 0 });
+            return;
+        }
+
         this.projectiles.push({
             x: source.x, y: source.y,
             tx, ty,
@@ -3413,6 +3445,7 @@ class GameState {
 
         const aiRocketCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'rocketInfantry').length + this._getTotalTrainQueue(ai, 'rocketInfantry');
         const aiSoldierCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'soldier').length + this._getTotalTrainQueue(ai, 'soldier');
+        const aiAttackDogCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'attackDog').length + this._getTotalTrainQueue(ai, 'attackDog');
 
         if (barracks.length > 0) {
             const bb = barracks.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
@@ -3421,13 +3454,17 @@ class GameState {
                 infantryChoice = 'flakTrooper';
             } else if (enemyHeavyUnits > aiRocketCount && ai.money >= UNIT_TYPES.rocketInfantry.cost) {
                 infantryChoice = 'rocketInfantry';
+            } else if (enemyInfantryUnits >= 3 && aiAttackDogCount < Math.ceil(enemyInfantryUnits / 2) && ai.money >= UNIT_TYPES.attackDog.cost) {
+                infantryChoice = 'attackDog';
             } else if (enemyInfantryUnits > aiFlakCount + 1 && ai.money >= UNIT_TYPES.flakTrooper.cost) {
                 infantryChoice = 'flakTrooper';
             } else if (aiSoldierCount > 0 && aiSoldierCount % 3 === 0 && ai.money >= UNIT_TYPES.rocketInfantry.cost) {
                 infantryChoice = 'rocketInfantry';
             } else if (aiSoldierCount > 1 && aiSoldierCount % 2 === 0 && ai.money >= UNIT_TYPES.flakTrooper.cost) {
                 infantryChoice = 'flakTrooper';
-            } else if (ai.money < UNIT_TYPES.soldier.cost) {
+            } else if (aiSoldierCount > 0 && aiSoldierCount % 4 === 0 && ai.money >= UNIT_TYPES.attackDog.cost) {
+                infantryChoice = 'attackDog';
+            } else if (ai.money < Math.min(UNIT_TYPES.soldier.cost, UNIT_TYPES.attackDog.cost)) {
                 infantryChoice = null;
             }
 
@@ -3952,9 +3989,11 @@ class GameState {
                 this.addBuildItem(container, type, def.name, def.cost, def.description, false);
             });
         } else {
-            ['soldier', 'rocketInfantry', 'flakTrooper', 'engineer', 'harvester', 'tank', 'apc', 'ifv', 'flakTrack', 'artillery', 'harrier', 'apocalypseTank', 'mcv'].forEach(type => {
+            ['soldier', 'attackDog', 'rocketInfantry', 'flakTrooper', 'engineer', 'harvester', 'tank', 'apc', 'ifv', 'flakTrack', 'artillery', 'harrier', 'apocalypseTank', 'mcv'].forEach(type => {
                 const def = UNIT_TYPES[type];
-                const description = type === 'engineer' ? 'Captures enemy buildings on contact.' : def.role;
+                const description = type === 'engineer'
+                    ? 'Captures enemy buildings on contact.'
+                    : (type === 'attackDog' ? 'Melee anti-infantry interceptor.' : def.role);
                 this.addBuildItem(container, type, def.name, def.cost, description, true);
             });
         }

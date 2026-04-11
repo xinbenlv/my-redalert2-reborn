@@ -277,7 +277,7 @@ class Renderer3D {
         if (this.unitMeshes.has(unit)) return;
 
         let mesh;
-        if (unit.type === 'soldier' || unit.type === 'rocketInfantry' || unit.type === 'flakTrooper' || unit.type === 'engineer') mesh = this.models.createSoldier(factionColor);
+        if (unit.type === 'soldier' || unit.type === 'attackDog' || unit.type === 'rocketInfantry' || unit.type === 'flakTrooper' || unit.type === 'engineer') mesh = this.models.createSoldier(factionColor);
         else if (unit.type === 'harvester') mesh = this.models.createHarvester(factionColor);
         else if (unit.type === 'mcv') mesh = this.models.createMCV(factionColor);
         else if (unit.type === 'tank') mesh = this.models.createTank(factionColor);
@@ -341,7 +341,7 @@ class Renderer3D {
                 }
             });
             this.models.flashMuzzle(mesh, false);
-        } else if (unit.type === 'soldier' || unit.type === 'rocketInfantry' || unit.type === 'flakTrooper' || unit.type === 'engineer') {
+        } else if (unit.type === 'soldier' || unit.type === 'attackDog' || unit.type === 'rocketInfantry' || unit.type === 'flakTrooper' || unit.type === 'engineer') {
             mesh.rotation.x = 0;
             if (unit.state === 'moving' || unit.state === 'capturing') {
                 unit._walkPhase = (unit._walkPhase || 0) + dt * 0.008;
@@ -686,7 +686,7 @@ class Renderer3D {
         else if (type === 'sentryGun') model = this.models.createSentryGun(factionColor);
         else if (type === 'battleBunker') model = this.models.createBattleBunker(factionColor);
         else if (type === 'sandbagWall') model = this.models.createSandbagWall(factionColor);
-        else if (type === 'soldier' || type === 'rocketInfantry' || type === 'flakTrooper' || type === 'engineer') {
+        else if (type === 'soldier' || type === 'attackDog' || type === 'rocketInfantry' || type === 'flakTrooper' || type === 'engineer') {
             model = this.models.createSoldier(factionColor);
             model.scale.setScalar(4);
         } else if (type === 'harvester') {

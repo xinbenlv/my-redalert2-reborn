@@ -89,6 +89,31 @@ window.UNIT_TYPES = {
         producedBy: 'barracks',
         prerequisites: ['barracks', 'refinery']
     },
+    attackDog: {
+        name: 'Attack Dog',
+        cost: 300,
+        trainTime: 3200,
+        hp: 65,
+        speed: 1.5,
+        damage: 28,
+        range: 0.9,
+        fireRate: 700,
+        sight: 7,
+        armorType: 'light',
+        role: 'attack dog',
+        weaponType: 'bite',
+        directFire: true,
+        targetArmorClasses: ['infantry'],
+        damageProfile: {
+            infantry: 1.7,
+            light: 0,
+            heavy: 0,
+            building: 0,
+            air: 0
+        },
+        producedBy: 'barracks',
+        prerequisites: ['barracks']
+    },
     harvester: {
         name: 'Harvester',
         cost: 1400,

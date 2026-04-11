@@ -95,7 +95,7 @@
 ### B4.1 步兵
 - [x] 基础 Rifle Infantry（Soldier）
 - [x] Engineer
-- [ ] Attack Dog
+- [x] Attack Dog
 - [x] Rocket Infantry / anti-armor infantry
 - [x] Flak Trooper / anti-air infantry
 - [ ] Spy
