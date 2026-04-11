@@ -1790,6 +1790,38 @@ class GameState {
         return overlays;
     }
 
+    getEntityEngagementOverlay(entity) {
+        if (!entity?.attackTarget) return null;
+        const target = entity.attackTarget;
+        const targetAlive = target.tx !== undefined
+            ? (target.hp ?? 0) > 0
+            : target.state !== 'dead' && (target.hp ?? 0) > 0;
+        if (!targetAlive || !this.canEntityTarget(entity, target)) return null;
+        const source = this.getEntityAnchor(entity);
+        const targetAnchor = this.getEntityAnchor(target);
+        if (!source || !targetAnchor) return null;
+
+        const attackAgainstAir = this.isAirUnit(target);
+        const strikeFromAir = this.isAirUnit(entity);
+        return {
+            kind: attackAgainstAir ? 'anti-air-lock' : (strikeFromAir ? 'airstrike' : 'attack'),
+            source,
+            target: targetAnchor,
+            label: attackAgainstAir ? 'AA LOCK' : (strikeFromAir ? 'AIRSTRIKE' : 'ATTACK'),
+            entity,
+            attackTarget: target,
+        };
+    }
+
+    getSelectedEngagementOverlays() {
+        const overlays = [];
+        for (const entity of this.selected) {
+            const overlay = this.getEntityEngagementOverlay(entity);
+            if (overlay) overlays.push(overlay);
+        }
+        return overlays;
+    }
+
     moveUnitAlongPath(unit, dt) {
         let targetX, targetY;
         if (unit.path && unit.pathIdx < unit.path.length) {
@@ -3415,6 +3447,25 @@ class GameState {
                 alpha: 0.85
             });
         }
+
+        const engagementOverlays = this.getSelectedEngagementOverlays();
+        for (const overlay of engagementOverlays.slice(0, 10)) {
+            const isAntiAir = overlay.kind === 'anti-air-lock';
+            const isAirstrike = overlay.kind === 'airstrike';
+            this._drawOverlayPath(ctx, [overlay.source, overlay.target], {
+                color: isAntiAir ? '#66ccff' : (isAirstrike ? '#ffd36b' : '#ff5a36'),
+                dashed: true,
+                width: isAirstrike ? 2.5 : 2,
+                alpha: 0.9
+            });
+            this._drawOverlayMarker(ctx, overlay.target, {
+                color: isAntiAir ? '#66ccff' : (isAirstrike ? '#ffd36b' : '#ff5a36'),
+                label: overlay.label,
+                style: isAntiAir ? 'diamond' : 'crosshair',
+                alpha: 0.95,
+                radius: isAirstrike ? 12 : 10,
+            });
+        }
     }
 
     _drawOverlayPath(ctx, points, options = {}) {
@@ -3756,7 +3807,20 @@ class GameState {
                 } else if (this.isAirUnit(s) && s.ammoCapacity > 0) {
                     extras.push(`AMMO: ${s.ammo}/${s.ammoCapacity}`);
                     extras.push(`DMG: ${s.damage} | RNG: ${s.range}`);
-                } else extras.push(`DMG: ${s.damage} | RNG: ${s.range}`);
+                    if (s.attackTarget) {
+                        extras.push(`STRIKE: ${this.getDisplayName(s.attackTarget.type)}`);
+                    }
+                    if (s.state === 'returningToBase') {
+                        extras.push(`STATUS: RTB ${s.homeAirfield ? `→ ${this.getDisplayName(s.homeAirfield.type)}` : ''}`.trim());
+                    } else if (s.state === 'rearming') {
+                        extras.push(`STATUS: Rearming ${s.homeAirfield ? `@ ${this.getDisplayName(s.homeAirfield.type)}` : ''}`.trim());
+                    }
+                } else {
+                    extras.push(`DMG: ${s.damage} | RNG: ${s.range}`);
+                    if (s.canAttackAir && s.attackTarget && this.isAirUnit(s.attackTarget)) {
+                        extras.push(`AA LOCK: ${this.getDisplayName(s.attackTarget.type)}`);
+                    }
+                }
                 if (this.isCombatUnit(s)) {
                     veterancyBits.push(`RANK: ${this.getVeterancyLabel(s.veterancyRank)}`);
                     veterancyBits.push(`XP: ${Math.floor(s.veterancyXp || 0)}/${VETERANCY_THRESHOLDS.elite}`);
@@ -3782,6 +3846,7 @@ class GameState {
                 if (def.powerDrain) statusBits.push(`Drain ${def.powerDrain}`);
                 if (def.providesRadar) statusBits.push(this.hasOperationalRadar(this.players[s.owner]) ? 'Radar online' : 'Radar offline');
                 if (this.isDefensiveBuilding(s)) statusBits.push(`DMG ${s.damage} | RNG ${s.range}`);
+                if (s.canAttackAir && s.attackTarget && this.isAirUnit(s.attackTarget)) statusBits.push(`AA LOCK: ${this.getDisplayName(s.attackTarget.type)}`);
                 if (this.isDefensiveBuilding(s) && POWER_SYSTEM.isLowPower(this.players[s.owner])) statusBits.push('Weapons offline');
                 if (s.repairing) statusBits.push('Repairing');
                 if (s.rallyPoint && this.canSetRallyPoint(s)) statusBits.push(`Rally: ${Math.round(s.rallyPoint.x)}, ${Math.round(s.rallyPoint.y)}`);

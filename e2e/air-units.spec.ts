@@ -53,21 +53,39 @@ test('airfield unlocks harriers, anti-air tracks aircraft targeting, and AI queu
 
     let ammoState = null;
     let selectionText = '';
+    let strikeOverlay = null;
+    let aaSelectionText = '';
+    let aaOverlay = null;
     if (spawned) {
       spawned.x = 18;
       spawned.y = 10.5;
       spawned.attackTarget = enemyPowerPlant;
       spawned.state = 'attacking';
+      game.selected = [spawned];
+      game.updateSelectionInfo();
+      strikeOverlay = game.getSelectedEngagementOverlays?.()[0] || null;
+      selectionText = (document.getElementById('selection-info') as HTMLElement)?.innerText || '';
       game.update(2500);
       game.update(2500);
       const drainedAmmo = spawned.ammo;
       const drainedState = spawned.state;
+      game.selected = [spawned];
+      game.updateSelectionInfo();
+      const postStrikeSelectionText = (document.getElementById('selection-info') as HTMLElement)?.innerText || '';
+
+      flakTrack.attackTarget = enemyHarrier;
+      flakTrack.state = 'attacking';
+      game.selected = [flakTrack];
+      game.updateSelectionInfo();
+      aaSelectionText = (document.getElementById('selection-info') as HTMLElement)?.innerText || '';
+      aaOverlay = game.getSelectedEngagementOverlays?.()[0] || null;
+
       for (let i = 0; i < 24; i += 1) {
         game.update(250);
       }
       game.selected = [spawned];
       game.updateSelectionInfo();
-      selectionText = (document.getElementById('selection-info') as HTMLElement)?.innerText || '';
+      selectionText = `${selectionText}\n---\n${postStrikeSelectionText}\n---\n${(document.getElementById('selection-info') as HTMLElement)?.innerText || ''}`;
       ammoState = {
         ammoCapacity: spawned.ammoCapacity,
         ammoAfterStrike: drainedAmmo,
@@ -101,6 +119,9 @@ test('airfield unlocks harriers, anti-air tracks aircraft targeting, and AI queu
       },
       ammoState,
       selectionText,
+      strikeOverlay,
+      aaSelectionText,
+      aaOverlay,
     };
   });
 
@@ -116,13 +137,20 @@ test('airfield unlocks harriers, anti-air tracks aircraft targeting, and AI queu
   expect(unlockedState.targeting.harrierVsBuilding).toBe(true);
   expect(unlockedState.damageProfile.flakVsAir).toBeGreaterThan(30);
   expect(unlockedState.damageProfile.harrierVsBuilding).toBeGreaterThan(80);
+  expect(unlockedState.strikeOverlay?.kind).toBe('airstrike');
+  expect(unlockedState.strikeOverlay?.label).toBe('AIRSTRIKE');
+  expect(unlockedState.aaOverlay?.kind).toBe('anti-air-lock');
+  expect(unlockedState.aaOverlay?.label).toBe('AA LOCK');
   expect(unlockedState.ammoState?.ammoCapacity).toBe(2);
   expect(unlockedState.ammoState?.ammoAfterStrike).toBe(0);
   expect(['returningToBase', 'rearming']).toContain(unlockedState.ammoState?.stateAfterStrike);
   expect(unlockedState.ammoState?.ammoAfterRearm).toBe(2);
   expect(unlockedState.ammoState?.stateAfterRearm).toBe('idle');
   expect(unlockedState.ammoState?.airfieldTarget).toBe('airfield');
+  expect(unlockedState.selectionText).toContain('STRIKE: Power Plant');
+  expect(unlockedState.selectionText).toContain('STATUS: RTB');
   expect(unlockedState.selectionText).toContain('AMMO: 2/2');
+  expect(unlockedState.aaSelectionText).toContain('AA LOCK: Harrier');
 
   const aiState = await page.evaluate(() => {
     const game = (window as any).game;

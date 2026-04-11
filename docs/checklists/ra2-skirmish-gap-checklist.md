@@ -118,7 +118,7 @@
 - [x] Harrier / Black Eagle（当前已补 Harrier）
 - [ ] Helicopter / transport air
 - [x] Air unit ammo / return-to-base / rearm 机制
-- [ ] 防空锁定与空袭反馈
+- [x] 防空锁定与空袭反馈
 
 ### B4.4 海军
 - [ ] Naval Yard 生产链
