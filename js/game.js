@@ -582,6 +582,12 @@ class GameState {
             canAttackAir: !!def.canAttackAir,
             isAirUnit: !!def.isAirUnit,
             altitude: def.isAirUnit ? (def.flightAltitude || 1.1) : 0,
+            ammo: def.ammoCapacity || 0,
+            ammoCapacity: def.ammoCapacity || 0,
+            reloadTime: def.reloadTime || 0,
+            reloadAmount: def.reloadAmount || 0,
+            reloadTimer: 0,
+            homeAirfield: null,
             captureRange: def.captureRange || 0,
             captureTarget: null,
             cargo: 0,
@@ -723,6 +729,7 @@ class GameState {
 
     canEntityTarget(attacker, target) {
         if (!attacker || !target) return false;
+        if (this.isAirUnit(attacker) && attacker.ammoCapacity > 0 && attacker.ammo <= 0) return false;
         if (this.isAirUnit(target)) return !!attacker.canAttackAir;
         if (target.tx !== undefined) return attacker.canAttackGround !== false;
         return attacker.canAttackGround !== false;
@@ -1364,6 +1371,9 @@ class GameState {
     spawnProducedUnit(player, building, unitType) {
         const exit = building.rallyPoint || { x: building.tx + building.size + 1, y: building.ty + Math.floor(building.size / 2) };
         const unit = this.createUnit(unitType, exit.x, exit.y, building.owner);
+        if (this.isAirUnit(unit) && building.type === 'airfield') {
+            unit.homeAirfield = building;
+        }
         player.units.push(unit);
         this.recordUnitBuilt(building.owner);
         if (unit.role === 'harvester') this.assignHarvesterJob(unit, player);
@@ -1688,6 +1698,134 @@ class GameState {
         }
     }
 
+    getAirfieldAnchor(airfield) {
+        if (!airfield || airfield.type !== 'airfield' || airfield.hp <= 0 || !airfield.built) return null;
+        return {
+            x: airfield.tx + airfield.size / 2 - 0.5,
+            y: airfield.ty + airfield.size / 2 - 0.5
+        };
+    }
+
+    findNearestAirfield(player, unit) {
+        if (!player || !unit) return null;
+        const candidates = player.buildings.filter(building => building.type === 'airfield' && building.hp > 0 && building.built);
+        if (candidates.length === 0) return null;
+
+        if (unit.homeAirfield && candidates.includes(unit.homeAirfield)) {
+            return unit.homeAirfield;
+        }
+
+        let best = null;
+        let bestDist = Infinity;
+        for (const airfield of candidates) {
+            const anchor = this.getAirfieldAnchor(airfield);
+            if (!anchor) continue;
+            const dist = Math.hypot(unit.x - anchor.x, unit.y - anchor.y);
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = airfield;
+            }
+        }
+        if (best) unit.homeAirfield = best;
+        return best;
+    }
+
+    moveAirUnitToward(unit, targetX, targetY, dt) {
+        const dx = targetX - unit.x;
+        const dy = targetY - unit.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist <= 0.08) {
+            unit.x = targetX;
+            unit.y = targetY;
+            return true;
+        }
+        const speed = unit.speed * dt / 1000;
+        unit.x += (dx / dist) * Math.min(speed, dist);
+        unit.y += (dy / dist) * Math.min(speed, dist);
+        this.faceToward(unit, targetX, targetY);
+        return dist <= 0.4;
+    }
+
+    sendAirUnitToBase(unit, player) {
+        const airfield = this.findNearestAirfield(player, unit);
+        if (!airfield) {
+            unit.attackTarget = null;
+            unit.target = null;
+            unit.state = 'idle';
+            return false;
+        }
+        const anchor = this.getAirfieldAnchor(airfield);
+        if (!anchor) {
+            unit.state = 'idle';
+            return false;
+        }
+        unit.homeAirfield = airfield;
+        unit.attackTarget = null;
+        unit.target = anchor;
+        unit.path = null;
+        unit.pathIdx = 0;
+        unit.state = 'returningToBase';
+        return true;
+    }
+
+    updateAirUnit(unit, player, dt) {
+        if (unit.state === 'dead') {
+            unit.deadTimer += dt;
+            return true;
+        }
+
+        const ammoCap = unit.ammoCapacity || 0;
+        if (ammoCap <= 0) return false;
+
+        if (unit.homeAirfield && (unit.homeAirfield.hp <= 0 || !unit.homeAirfield.built)) {
+            unit.homeAirfield = null;
+        }
+
+        if ((unit.ammo <= 0 && unit.state !== 'returningToBase' && unit.state !== 'rearming') ||
+            (unit.state === 'idle' && unit.ammo < ammoCap)) {
+            this.sendAirUnitToBase(unit, player);
+        }
+
+        if (unit.state !== 'returningToBase' && unit.state !== 'rearming') {
+            return false;
+        }
+
+        const airfield = this.findNearestAirfield(player, unit);
+        if (!airfield) {
+            unit.state = 'idle';
+            unit.target = null;
+            return true;
+        }
+
+        const anchor = this.getAirfieldAnchor(airfield);
+        if (!anchor) {
+            unit.state = 'idle';
+            return true;
+        }
+
+        const landed = this.moveAirUnitToward(unit, anchor.x, anchor.y, dt);
+        if (!landed) {
+            unit.target = anchor;
+            unit.state = 'returningToBase';
+            return true;
+        }
+
+        unit.x = anchor.x;
+        unit.y = anchor.y;
+        unit.target = null;
+        unit.attackTarget = null;
+        unit.state = 'rearming';
+        unit.reloadTimer += dt;
+        if (unit.reloadTimer >= unit.reloadTime) {
+            unit.reloadTimer = 0;
+            unit.ammo = Math.min(ammoCap, unit.ammo + Math.max(1, unit.reloadAmount || 0));
+        }
+        if (unit.ammo >= ammoCap) {
+            unit.state = 'idle';
+        }
+        return true;
+    }
+
     hasPoweredBuilding(player, type) {
         return !!player?.buildings?.some(building => building.type === type && building.built && building.hp > 0);
     }
@@ -1942,6 +2080,10 @@ class GameState {
                 }
 
                 u.fireTimer = Math.max(0, u.fireTimer - dt);
+
+                if (this.isAirUnit(u) && this.updateAirUnit(u, p, dt)) {
+                    continue;
+                }
 
                 if (u.state === 'moving' || (u.state === 'attacking' && u.attackTarget)) {
                     let targetX, targetY;
@@ -2222,6 +2364,13 @@ class GameState {
         const source = this.getEntityAnchor(u);
         const targetAnchor = this.getEntityAnchor(target);
         if (!source || !targetAnchor) return;
+        if (this.isAirUnit(u) && u.ammoCapacity > 0) {
+            if (u.ammo <= 0) return;
+            u.ammo = Math.max(0, u.ammo - 1);
+            if (u.ammo <= 0) {
+                this.sendAirUnitToBase(u, this.players[u.owner]);
+            }
+        }
         const tx = targetAnchor.x;
         const ty = targetAnchor.y;
 
@@ -3218,6 +3367,9 @@ class GameState {
                     if (s.captureTarget && s.captureTarget.hp > 0) {
                         extras.push(`TARGET: ${this.getDisplayName(s.captureTarget.type)}`);
                     }
+                } else if (this.isAirUnit(s) && s.ammoCapacity > 0) {
+                    extras.push(`AMMO: ${s.ammo}/${s.ammoCapacity}`);
+                    extras.push(`DMG: ${s.damage} | RNG: ${s.range}`);
                 } else extras.push(`DMG: ${s.damage} | RNG: ${s.range}`);
                 if (this.isCombatUnit(s)) {
                     veterancyBits.push(`RANK: ${this.getVeterancyLabel(s.veterancyRank)}`);

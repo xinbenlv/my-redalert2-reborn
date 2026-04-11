@@ -245,6 +245,9 @@ window.UNIT_TYPES = {
         canAttackAir: false,
         isAirUnit: true,
         flightAltitude: 1.1,
+        ammoCapacity: 2,
+        reloadTime: 1800,
+        reloadAmount: 1,
         producedBy: 'airfield',
         prerequisites: ['airfield']
     }

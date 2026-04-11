@@ -117,7 +117,7 @@
 ### B4.3 空军
 - [x] Harrier / Black Eagle（当前已补 Harrier）
 - [ ] Helicopter / transport air
-- [ ] Air unit ammo / return-to-base / rearm 机制
+- [x] Air unit ammo / return-to-base / rearm 机制
 - [ ] 防空锁定与空袭反馈
 
 ### B4.4 海军
@@ -275,7 +275,7 @@
 
 ### C2. P1：把“中局节奏”补出来
 - [x] Battle Lab
-- [~] 更多载具与反制链（已补 V3 Artillery + Flak Track，仍缺 APC / 更完整的空地反制链）
+- [~] 更多载具与反制链（已补 V3 Artillery + Flak Track + Harrier 回场补弹，仍缺 APC / 更完整的空地反制反馈）
 - [x] veterancy
 - [x] air units（已补 Airfield + Harrier 基础空袭链路）
 - [x] more maps

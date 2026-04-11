@@ -51,6 +51,33 @@ test('airfield unlocks harriers, anti-air tracks aircraft targeting, and AI queu
     const enemyHarrier = game.createUnit('harrier', 21, 14, 1);
     const enemyPowerPlant = game.createBuilding('powerPlant', 21, 10, 1);
 
+    let ammoState = null;
+    let selectionText = '';
+    if (spawned) {
+      spawned.x = 18;
+      spawned.y = 10.5;
+      spawned.attackTarget = enemyPowerPlant;
+      spawned.state = 'attacking';
+      game.update(2500);
+      game.update(2500);
+      const drainedAmmo = spawned.ammo;
+      const drainedState = spawned.state;
+      for (let i = 0; i < 24; i += 1) {
+        game.update(250);
+      }
+      game.selected = [spawned];
+      game.updateSelectionInfo();
+      selectionText = (document.getElementById('selection-info') as HTMLElement)?.innerText || '';
+      ammoState = {
+        ammoCapacity: spawned.ammoCapacity,
+        ammoAfterStrike: drainedAmmo,
+        stateAfterStrike: drainedState,
+        ammoAfterRearm: spawned.ammo,
+        stateAfterRearm: spawned.state,
+        airfieldTarget: spawned.homeAirfield?.type || null,
+      };
+    }
+
     return {
       harrierClass: harrierCard?.className || '',
       spawned: spawned
@@ -72,6 +99,8 @@ test('airfield unlocks harriers, anti-air tracks aircraft targeting, and AI queu
         flakVsAir: game.getDamageAgainstTarget(flakTrack.damage, flakTrack.damageProfile, enemyHarrier),
         harrierVsBuilding: game.getDamageAgainstTarget(spawned.damage, spawned.damageProfile, enemyPowerPlant),
       },
+      ammoState,
+      selectionText,
     };
   });
 
@@ -87,6 +116,13 @@ test('airfield unlocks harriers, anti-air tracks aircraft targeting, and AI queu
   expect(unlockedState.targeting.harrierVsBuilding).toBe(true);
   expect(unlockedState.damageProfile.flakVsAir).toBeGreaterThan(30);
   expect(unlockedState.damageProfile.harrierVsBuilding).toBeGreaterThan(80);
+  expect(unlockedState.ammoState?.ammoCapacity).toBe(2);
+  expect(unlockedState.ammoState?.ammoAfterStrike).toBe(0);
+  expect(['returningToBase', 'rearming']).toContain(unlockedState.ammoState?.stateAfterStrike);
+  expect(unlockedState.ammoState?.ammoAfterRearm).toBe(2);
+  expect(unlockedState.ammoState?.stateAfterRearm).toBe('idle');
+  expect(unlockedState.ammoState?.airfieldTarget).toBe('airfield');
+  expect(unlockedState.selectionText).toContain('AMMO: 2/2');
 
   const aiState = await page.evaluate(() => {
     const game = (window as any).game;
