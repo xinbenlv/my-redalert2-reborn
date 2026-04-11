@@ -162,6 +162,19 @@ window.BUILD_TYPES = {
         description: 'Powered turret for anti-vehicle defense.',
         prerequisites: ['constructionYard', 'powerPlant', 'refinery', 'barracks']
     },
+    battleBunker: {
+        name: 'Battle Bunker',
+        cost: 900,
+        buildTime: 5000,
+        hp: 700,
+        sight: 7,
+        size: 1,
+        powerSupply: 0,
+        powerDrain: 0,
+        garrisonCapacity: 3,
+        description: 'Infantry garrison bunker that projects their firepower from hardened cover.',
+        prerequisites: ['constructionYard', 'powerPlant', 'barracks']
+    },
     sandbagWall: {
         name: 'Sandbag Wall',
         cost: 100,

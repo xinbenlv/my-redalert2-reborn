@@ -101,7 +101,7 @@
 - [ ] Spy
 - [ ] Tanya / elite commando 类单位
 - [ ] Desolator / Tesla Trooper / Chrono Legionnaire / GI 等特色单位
-- [ ] 兵种驻守建筑（garrison）
+- [x] 兵种驻守建筑（garrison）
 - [ ] 兵种趴下 / 部署 / 架设类行为（如 GI）
 
 ### B4.2 载具
@@ -279,7 +279,7 @@
 - [x] veterancy
 - [x] air units（已补 Airfield + Harrier 基础空袭链路）
 - [x] more maps
-- [~] walls / bridges / garrison（已补 walls，bridges / garrison 仍未完成）
+- [~] walls / bridges / garrison（已补 walls + Battle Bunker infantry garrison，bridges 与地图驻守点仍未完成）
 
 ### C3. P2：把“RA2 味道”补出来
 - [ ] sprite/cameo 主视觉切换

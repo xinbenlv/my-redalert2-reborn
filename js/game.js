@@ -552,7 +552,7 @@ class GameState {
 
     createBuilding(type, tx, ty, owner) {
         const def = BUILD_TYPES[type];
-        return {
+        const building = {
             type, tx, ty, owner,
             hp: def.hp, maxHp: def.hp,
             built: true, buildProgress: 1,
@@ -569,8 +569,12 @@ class GameState {
             attackTarget: null,
             training: null, trainProgress: 0, trainQueue: [],
             rallyPoint: { x: tx + def.size + 1, y: ty + Math.floor(def.size / 2) },
-            oreStored: 0
+            oreStored: 0,
+            garrisonCapacity: def.garrisonCapacity || 0,
+            garrisonedUnits: []
         };
+        this.refreshGarrisonBuildingStats(building);
+        return building;
     }
 
     createUnit(type, tx, ty, owner) {
@@ -758,6 +762,47 @@ class GameState {
         if (this.isAirUnit(target)) return !!attacker.canAttackAir;
         if (target.tx !== undefined) return attacker.canAttackGround !== false;
         return attacker.canAttackGround !== false;
+    }
+
+    isGarrisonBuilding(building) {
+        return !!(building && building.tx !== undefined && (building.garrisonCapacity || 0) > 0);
+    }
+
+    canGarrisonUnit(building, unit) {
+        if (!this.isGarrisonBuilding(building) || !unit || unit.tx !== undefined) return false;
+        if (building.owner !== unit.owner || !building.built || building.hp <= 0) return false;
+        if (unit.state === 'dead' || unit.state === 'loaded') return false;
+        if (!TRANSPORTABLE_INFANTRY_TYPES.has(unit.type)) return false;
+        return (building.garrisonedUnits?.length || 0) < building.garrisonCapacity;
+    }
+
+    refreshGarrisonBuildingStats(building) {
+        if (!this.isGarrisonBuilding(building)) return;
+        const occupants = (building.garrisonedUnits || []).filter(unit => unit.state === 'loaded' && unit.hp > 0);
+        building.garrisonedUnits = occupants;
+        const count = occupants.length;
+        if (!count) {
+            building.damage = 0;
+            building.range = 0;
+            building.fireRate = 0;
+            building.damageProfile = null;
+            building.canAttackGround = false;
+            building.canAttackAir = false;
+            building.attackTarget = null;
+            building.projectileSpeed = 10;
+            building.weaponType = 'rifle';
+            return;
+        }
+        const avgDamage = occupants.reduce((sum, unit) => sum + (unit.damage || unit.baseDamage || 0), 0) / count;
+        const bestRange = occupants.reduce((best, unit) => Math.max(best, unit.range || 0), 0);
+        building.damage = Math.max(8, Math.round(avgDamage * Math.min(1.75, 1 + count * 0.18)));
+        building.range = Math.max(4.5, bestRange + 0.6);
+        building.fireRate = Math.max(280, 700 - count * 110);
+        building.damageProfile = null;
+        building.canAttackGround = occupants.some(unit => unit.canAttackGround !== false);
+        building.canAttackAir = occupants.some(unit => unit.canAttackAir);
+        building.projectileSpeed = 11;
+        building.weaponType = occupants.some(unit => unit.canAttackAir) ? 'flak' : 'rifle';
     }
 
     getTargetArmorClass(target) {
@@ -1148,6 +1193,26 @@ class GameState {
             }
         }
 
+        const friendlyGarrison = this.players[this.currentPlayer].buildings.find(building =>
+            this.isGarrisonBuilding(building)
+            && building.hp > 0
+            && tile.x >= building.tx
+            && tile.x < building.tx + building.size
+            && tile.y >= building.ty
+            && tile.y < building.ty + building.size
+        );
+        if (friendlyGarrison) {
+            let garrisonIssued = false;
+            for (const unit of this.selected) {
+                if (!this.canUnitReceiveCommand(unit) || !this.canGarrisonUnit(friendlyGarrison, unit)) continue;
+                garrisonIssued = this.orderUnitToGarrison(unit, friendlyGarrison) || garrisonIssued;
+            }
+            if (garrisonIssued) {
+                this.commandPings.push({ tx: friendlyGarrison.tx, ty: friendlyGarrison.ty, color: '#ffaa33', time: 0 });
+                return;
+            }
+        }
+
         // Check if right-clicked on an enemy unit
         const enemyUnit = this._findEnemyUnitAt(tile.x, tile.y);
         if (enemyUnit) {
@@ -1359,6 +1424,98 @@ class GameState {
             }
         }
         return positions;
+    }
+
+    getAvailableGarrisonExitPositions(building, targetX = building?.tx + 1, targetY = building?.ty + 1, count = 1) {
+        if (!building) return [];
+        const positions = [];
+        const seen = new Set();
+        const baseX = Math.round(targetX);
+        const baseY = Math.round(targetY);
+        for (let radius = 1; radius <= 4 && positions.length < count; radius++) {
+            for (let dy = -radius; dy <= radius && positions.length < count; dy++) {
+                for (let dx = -radius; dx <= radius && positions.length < count; dx++) {
+                    const tx = baseX + dx;
+                    const ty = baseY + dy;
+                    const key = `${tx},${ty}`;
+                    if (seen.has(key)) continue;
+                    seen.add(key);
+                    if (tx < 0 || ty < 0 || tx >= MAP_SIZE || ty >= MAP_SIZE) continue;
+                    if (this.map[ty]?.[tx]?.type === 'water') continue;
+                    if (tx >= building.tx && tx < building.tx + building.size && ty >= building.ty && ty < building.ty + building.size) continue;
+                    if (this.players.some(player => player.buildings.some(candidate => candidate !== building && candidate.hp > 0 && tx >= candidate.tx && tx < candidate.tx + candidate.size && ty >= candidate.ty && ty < candidate.ty + candidate.size))) continue;
+                    if (this.players.some(player => player.units.some(unit => unit.state !== 'dead' && unit.state !== 'loaded' && Math.hypot(unit.x - tx, unit.y - ty) < 0.6))) continue;
+                    positions.push({ x: tx, y: ty });
+                }
+            }
+        }
+        return positions;
+    }
+
+    orderUnitToGarrison(unit, building) {
+        if (!this.canGarrisonUnit(building, unit)) return false;
+        unit.garrisonTarget = building;
+        unit.transportTarget = null;
+        unit.captureTarget = null;
+        unit.attackTarget = null;
+        this.issueMoveOrder(unit, building.tx + building.size / 2 - 0.5, building.ty + building.size / 2 - 0.5, 'garrisoning');
+        return true;
+    }
+
+    garrisonUnit(building, unit) {
+        if (!this.canGarrisonUnit(building, unit)) return false;
+        building.garrisonedUnits.push(unit);
+        unit.garrisonTarget = building;
+        unit.transportTarget = null;
+        unit.transportCarrier = null;
+        unit.captureTarget = null;
+        unit.attackTarget = null;
+        unit.target = null;
+        unit.path = null;
+        unit.pathIdx = 0;
+        unit.x = building.tx + building.size / 2 - 0.5;
+        unit.y = building.ty + building.size / 2 - 0.5;
+        unit.state = 'loaded';
+        this.refreshGarrisonBuildingStats(building);
+        if (this.selected.includes(unit)) {
+            this.selected = this.selected.filter(entity => entity !== unit);
+            this.updateSelectionInfo();
+        }
+        this.renderer3d?.setUnitVisible(unit, false);
+        return true;
+    }
+
+    ejectGarrison(building, targetX = building?.tx + 1, targetY = building?.ty + 1) {
+        if (!this.isGarrisonBuilding(building) || !building.garrisonedUnits?.length) return 0;
+        const positions = this.getAvailableGarrisonExitPositions(building, targetX, targetY, building.garrisonedUnits.length);
+        let ejected = 0;
+        while (building.garrisonedUnits.length && positions.length) {
+            const unit = building.garrisonedUnits.shift();
+            const pos = positions.shift();
+            unit.garrisonTarget = null;
+            unit.x = pos.x;
+            unit.y = pos.y;
+            unit.state = 'idle';
+            unit.target = null;
+            unit.path = null;
+            unit.pathIdx = 0;
+            this.renderer3d?.setUnitVisible(unit, true);
+            ejected += 1;
+        }
+        this.refreshGarrisonBuildingStats(building);
+        return ejected;
+    }
+
+    destroyBuildingGarrison(building, attackerOwner = null, attackerUnit = null) {
+        if (!this.isGarrisonBuilding(building) || !building.garrisonedUnits?.length) return;
+        const occupants = [...building.garrisonedUnits];
+        building.garrisonedUnits = [];
+        for (const unit of occupants) {
+            unit.garrisonTarget = null;
+            this.markUnitDestroyed(unit, attackerOwner, attackerUnit);
+            unit.deadTimer = 0;
+        }
+        this.refreshGarrisonBuildingStats(building);
     }
 
     orderPassengerToBoard(passenger, carrier) {
@@ -1578,6 +1735,9 @@ class GameState {
         const player = this.players[building.owner];
         const refund = Math.max(100, Math.floor((BUILD_TYPES[building.type]?.cost || 0) * 0.5 * Math.max(0.3, building.hp / building.maxHp)));
         player.money += refund;
+        if (this.isGarrisonBuilding(building) && building.garrisonedUnits?.length) {
+            this.ejectGarrison(building);
+        }
         building._removedByOwner = true;
         building.hp = 0;
         building.repairing = false;
@@ -1684,6 +1844,9 @@ class GameState {
         building.training = null;
         building.trainProgress = 0;
         building.trainQueue = [];
+        if (this.isGarrisonBuilding(building) && building.garrisonedUnits?.length) {
+            this.ejectGarrison(building);
+        }
         building.hp = Math.max(building.hp, Math.floor(building.maxHp * 0.35));
         if (!building.rallyPoint && this.canSetRallyPoint(building)) {
             building.rallyPoint = { x: building.tx + building.size + 1, y: building.ty + Math.floor(building.size / 2) };
@@ -2332,6 +2495,9 @@ class GameState {
                 }
 
                 if (this.isDefensiveBuilding(b)) {
+                    if (this.isGarrisonBuilding(b)) {
+                        this.refreshGarrisonBuildingStats(b);
+                    }
                     const defensesPowered = !POWER_SYSTEM.isLowPower(p);
                     if (!defensesPowered) {
                         b.attackTarget = null;
@@ -2356,6 +2522,7 @@ class GameState {
                 }
 
                 if (b.hp <= 0) {
+                    this.destroyBuildingGarrison(b, b._lastAttackerOwner ?? null, b._lastAttackerUnit || null);
                     this.markBuildingDestroyed(b, b._lastAttackerOwner ?? null, {
                         countAsLoss: !b._removedByOwner,
                         attackerUnit: b._lastAttackerUnit || null,
@@ -2377,6 +2544,26 @@ class GameState {
                 }
                 if (u.role === 'engineer' && !u.transportTarget && u.state !== 'boardingTransport') {
                     this.updateEngineerUnit(u, dt);
+                    continue;
+                }
+                if (u.state === 'garrisoning' || u.garrisonTarget) {
+                    const building = u.garrisonTarget;
+                    if (!building || !this.canGarrisonUnit(building, u)) {
+                        u.garrisonTarget = null;
+                        if (u.state === 'garrisoning') u.state = 'idle';
+                        continue;
+                    }
+                    const anchorX = building.tx + building.size / 2 - 0.5;
+                    const anchorY = building.ty + building.size / 2 - 0.5;
+                    u.attackTarget = null;
+                    if (Math.hypot(u.x - anchorX, u.y - anchorY) <= 0.9) {
+                        this.garrisonUnit(building, u);
+                    } else {
+                        if (!u.target || !u.path || u.state !== 'garrisoning') {
+                            this.issueMoveOrder(u, anchorX, anchorY, 'garrisoning');
+                        }
+                        this.moveUnitAlongPath(u, dt);
+                    }
                     continue;
                 }
                 if (u.state === 'boardingTransport' || u.transportTarget) {
@@ -3703,6 +3890,12 @@ class GameState {
                 this.commandMode = this.commandMode === 'set-rally' ? null : 'set-rally';
                 this.eva(this.commandMode ? 'Right-click to place rally point.' : 'Rally placement cancelled.');
                 this.updateSelectionInfo();
+            } else if (action === 'eject-garrison') {
+                const ejected = this.ejectGarrison(building);
+                if (ejected > 0) {
+                    this.eva(`${this.getDisplayName(building.type)} ejected ${ejected} infantry.`);
+                    this.updateSelectionInfo();
+                }
             }
         });
     }
@@ -3714,7 +3907,7 @@ class GameState {
         const p = this.players[this.currentPlayer];
 
         if (activeTab === 'buildings') {
-            ['powerPlant', 'advancedPowerPlant', 'refinery', 'barracks', 'radarDome', 'warFactory', 'airfield', 'battleLab', 'pillbox', 'sentryGun', 'sandbagWall'].forEach(type => {
+            ['powerPlant', 'advancedPowerPlant', 'refinery', 'barracks', 'radarDome', 'warFactory', 'airfield', 'battleLab', 'pillbox', 'sentryGun', 'battleBunker', 'sandbagWall'].forEach(type => {
                 const def = BUILD_TYPES[type];
                 this.addBuildItem(container, type, def.name, def.cost, def.description, false);
             });
@@ -3884,6 +4077,7 @@ class GameState {
                 if (def.powerDrain) statusBits.push(`Drain ${def.powerDrain}`);
                 if (def.providesRadar) statusBits.push(this.hasOperationalRadar(this.players[s.owner]) ? 'Radar online' : 'Radar offline');
                 if (this.isDefensiveBuilding(s)) statusBits.push(`DMG ${s.damage} | RNG ${s.range}`);
+                if (this.isGarrisonBuilding(s)) statusBits.push(`GARRISON ${s.garrisonedUnits.length}/${s.garrisonCapacity}`);
                 if (s.canAttackAir && s.attackTarget && this.isAirUnit(s.attackTarget)) statusBits.push(`AA LOCK: ${this.getDisplayName(s.attackTarget.type)}`);
                 if (this.isDefensiveBuilding(s) && POWER_SYSTEM.isLowPower(this.players[s.owner])) statusBits.push('Weapons offline');
                 if (s.repairing) statusBits.push('Repairing');
@@ -3894,6 +4088,9 @@ class GameState {
                     : '';
                 const repairButton = `<button class="selection-action" data-action="repair" ${(!canRepair && !s.repairing) ? 'disabled' : ''}>${s.repairing ? 'Stop Repair' : 'Repair'}</button>`;
                 const sellButton = `<button class="selection-action danger" data-action="sell">Sell</button>`;
+                const ejectButton = this.isGarrisonBuilding(s)
+                    ? `<button class="selection-action" data-action="eject-garrison" ${s.garrisonedUnits.length ? '' : 'disabled'}>Eject Garrison</button>`
+                    : '';
                 const cancelBuildButton = !s.built
                     ? `<button class="selection-action" data-action="cancel-build">Cancel Build</button>`
                     : '';
@@ -3910,7 +4107,7 @@ class GameState {
                     <div>HP: ${Math.floor(s.hp)}/${s.maxHp}</div>
                     ${statusBits.map(bit => `<div>${bit}</div>`).join('')}
                     ${rallyHint}
-                    <div class="selection-actions">${repairButton}${sellButton}${cancelBuildButton}${cancelCurrentButton}${cancelQueueButton}${rallyButton}</div>`;
+                    <div class="selection-actions">${repairButton}${sellButton}${ejectButton}${cancelBuildButton}${cancelCurrentButton}${cancelQueueButton}${rallyButton}</div>`;
             }
         } else {
             const units = this.selected.filter(u => u.tx === undefined);

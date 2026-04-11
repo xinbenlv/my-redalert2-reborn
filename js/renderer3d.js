@@ -233,6 +233,7 @@ class Renderer3D {
         else if (building.type === 'airfield') mesh = this.models.createAirfield(factionColor);
         else if (building.type === 'pillbox') mesh = this.models.createPillbox(factionColor);
         else if (building.type === 'sentryGun') mesh = this.models.createSentryGun(factionColor);
+        else if (building.type === 'battleBunker') mesh = this.models.createBattleBunker(factionColor);
         else if (building.type === 'sandbagWall') mesh = this.models.createSandbagWall(factionColor);
 
         if (!mesh) return;
@@ -680,6 +681,7 @@ class Renderer3D {
         else if (type === 'airfield') model = this.models.createAirfield(factionColor);
         else if (type === 'pillbox') model = this.models.createPillbox(factionColor);
         else if (type === 'sentryGun') model = this.models.createSentryGun(factionColor);
+        else if (type === 'battleBunker') model = this.models.createBattleBunker(factionColor);
         else if (type === 'sandbagWall') model = this.models.createSandbagWall(factionColor);
         else if (type === 'soldier' || type === 'rocketInfantry' || type === 'flakTrooper' || type === 'engineer') {
             model = this.models.createSoldier(factionColor);

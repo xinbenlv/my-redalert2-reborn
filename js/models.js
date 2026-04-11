@@ -972,6 +972,60 @@ class ModelFactory {
         return group;
     }
 
+    createBattleBunker(factionColor) {
+        const fc = this._factionColor(factionColor);
+        const group = new THREE.Group();
+
+        const slab = new THREE.Mesh(
+            new THREE.BoxGeometry(0.98, 0.12, 0.98),
+            this._mat(0x726860, { roughness: 0.9, metalness: 0.08 })
+        );
+        slab.position.y = 0.06;
+        group.add(slab);
+
+        const shell = new THREE.Mesh(
+            new THREE.BoxGeometry(0.82, 0.46, 0.82),
+            this._mat(0x8f7c68, { roughness: 0.86, metalness: 0.05 })
+        );
+        shell.position.y = 0.29;
+        shell.castShadow = true;
+        group.add(shell);
+
+        const roof = new THREE.Mesh(
+            new THREE.BoxGeometry(0.9, 0.08, 0.9),
+            this._mat(0x4b4f53, { roughness: 0.5, metalness: 0.42 })
+        );
+        roof.position.y = 0.56;
+        roof.castShadow = true;
+        group.add(roof);
+
+        const slit = new THREE.Mesh(
+            new THREE.BoxGeometry(0.54, 0.1, 0.1),
+            this._mat(0x17181b, { roughness: 0.95, metalness: 0.02 })
+        );
+        slit.position.set(0, 0.32, 0.42);
+        group.add(slit);
+
+        const hatch = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.12, 0.14, 0.05, 10),
+            this._mat(fc, { roughness: 0.38, metalness: 0.48, emissive: fc, emissiveIntensity: 0.12 })
+        );
+        hatch.rotation.x = Math.PI / 2;
+        hatch.position.set(0.22, 0.6, -0.1);
+        group.add(hatch);
+
+        const stripe = new THREE.Mesh(
+            new THREE.BoxGeometry(0.62, 0.06, 0.06),
+            this._mat(fc, { roughness: 0.4, metalness: 0.24 })
+        );
+        stripe.position.set(0, 0.18, -0.3);
+        group.add(stripe);
+
+        group.userData.modelType = 'battleBunker';
+        group.userData.factionColor = fc;
+        return group;
+    }
+
     createSandbagWall(factionColor) {
         const fc = this._factionColor(factionColor);
         const group = new THREE.Group();
