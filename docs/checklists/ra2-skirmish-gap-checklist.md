@@ -42,7 +42,7 @@
 - [x] 以 MCV / Construction Yard 为核心的正式开局流程
 - [x] 正式的遭遇战规则参数（starting credits、short/medium/long game）
 - [x] 多出生点 / 真正的 spawn logic
-- [~] 可配置的 skirmish 选项（已支持资金、地图、玩家阵营、AI 难度与 AI build order；AI 数量/多阵营席位仍未完成）
+- [~] 可配置的 skirmish 选项（已支持资金、地图、玩家阵营、AI 难度、AI build order 与游戏速度；AI 数量/多阵营席位仍未完成）
 - [x] 更完整的失败条件（仅靠剩余单位苟活不够 RA2）
 - [x] 胜利结算界面 / 战后统计
 
@@ -237,8 +237,8 @@
 - [ ] 2v2 / free-for-all 基础结构
 - [ ] 阵营与颜色选择
 - [ ] 地图选择界面
-- [ ] AI 难度选择
-- [ ] 游戏速度选项
+- [x] AI 难度选择
+- [x] 游戏速度选项
 - [ ] 观察模式 / replay（长期项）
 
 ## B15. 视觉语言与美术方向

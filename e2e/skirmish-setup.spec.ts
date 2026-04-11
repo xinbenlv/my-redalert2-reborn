@@ -11,6 +11,7 @@ test('skirmish setup applies selected credits, map, faction, and difficulty befo
   await page.selectOption('#setup-player-faction', 'allied');
   await page.selectOption('#setup-ai-difficulty', 'hard');
   await page.selectOption('#setup-ai-build-order', 'air');
+  await page.selectOption('#setup-game-speed', 'fast');
   await page.click('#skirmish-start-button');
 
   await page.waitForFunction(() => Boolean((window as any).game));
@@ -26,6 +27,9 @@ test('skirmish setup applies selected credits, map, faction, and difficulty befo
       aiDifficulty: game.aiConfig?.difficulty,
       aiBuildOrder: game.aiConfig?.buildOrder,
       aiBuildOrderLabel: game.players[1]?.aiBuildOrderLabel,
+      gameSpeed: game.matchConfig.gameSpeed,
+      gameSpeedLabel: game.gameSpeedProfile?.label,
+      gameSpeedMultiplier: game.gameSpeedMultiplier,
       mapProfile: game.mapProfile?.id,
       title: document.getElementById('game-title')?.textContent,
       briefing: document.getElementById('setup-briefing')?.textContent,
@@ -39,10 +43,55 @@ test('skirmish setup applies selected credits, map, faction, and difficulty befo
   expect(applied.aiDifficulty).toBe('hard');
   expect(applied.aiBuildOrder).toBe('air');
   expect(applied.aiBuildOrderLabel).toBe('Air Supremacy');
+  expect(applied.gameSpeed).toBe('fast');
+  expect(applied.gameSpeedLabel).toBe('Fast Strike');
+  expect(applied.gameSpeedMultiplier).toBeGreaterThan(1);
   expect(applied.mapProfile).toBe('crossroads');
   expect(applied.title).toContain('CROSSROADS');
   expect(applied.briefing).toContain('HARD');
   expect(applied.briefing).toContain('AIR SUPREMACY');
+  expect(applied.briefing).toContain('FAST STRIKE');
+});
+
+test('game speed selection changes simulation tempo for fresh skirmish instances', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForFunction(() => Boolean((window as any).GameState));
+
+  const result = await page.evaluate(() => {
+    const GameState = (window as any).GameState;
+    const configs = {
+      slow: { map: 'classic', startingCredits: 6500, playerFaction: 'soviet', aiDifficulty: 'medium', aiBuildOrder: 'balanced', gameSpeed: 'slow' },
+      fast: { map: 'classic', startingCredits: 6500, playerFaction: 'soviet', aiDifficulty: 'medium', aiBuildOrder: 'balanced', gameSpeed: 'fast' },
+    };
+    const sampleDistance = (config: any) => {
+      const game = new GameState(config);
+      const unit = game.players[0].units.find((entry: any) => entry.type === 'mcv');
+      const startX = unit.x;
+      unit.autoDeployAt = null;
+      game.issueMoveOrder(unit, unit.x + 6, unit.y);
+      for (let i = 0; i < 20; i += 1) game.update(50);
+      return {
+        elapsedMs: game.elapsedMs,
+        distance: unit.x - startX,
+        speed: game.matchConfig.gameSpeed,
+        label: game.gameSpeedProfile?.label,
+        multiplier: game.gameSpeedMultiplier,
+      };
+    };
+    return {
+      slow: sampleDistance(configs.slow),
+      fast: sampleDistance(configs.fast),
+    };
+  });
+
+  expect(result.slow.speed).toBe('slow');
+  expect(result.fast.speed).toBe('fast');
+  expect(result.slow.label).toBe('Slow Grind');
+  expect(result.fast.label).toBe('Fast Strike');
+  expect(result.slow.multiplier).toBeLessThan(1);
+  expect(result.fast.multiplier).toBeGreaterThan(1);
+  expect(result.fast.elapsedMs).toBeGreaterThan(result.slow.elapsedMs);
+  expect(result.fast.distance).toBeGreaterThan(result.slow.distance * 1.4);
 });
 
 test('skirmish setup exposes twin rivers and boots the distinct battlefield layout', async ({ page }) => {

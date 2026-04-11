@@ -57,6 +57,12 @@ const DEFAULT_MATCH_CONFIG = {
     playerFaction: 'soviet',
     aiDifficulty: 'medium',
     aiBuildOrder: 'balanced',
+    gameSpeed: 'normal',
+};
+const GAME_SPEED_PROFILES = {
+    slow: { speed: 'slow', label: 'Slow Grind', multiplier: 0.8 },
+    normal: { speed: 'normal', label: 'Standard Tempo', multiplier: 1 },
+    fast: { speed: 'fast', label: 'Fast Strike', multiplier: 1.35 },
 };
 const AI_BUILD_ORDER_PROFILES = {
     balanced: {
@@ -126,12 +132,14 @@ function normalizeMatchConfig(config = {}) {
     const playerFaction = config.playerFaction === 'allied' ? 'allied' : 'soviet';
     const aiDifficulty = ['easy', 'medium', 'hard'].includes(config.aiDifficulty) ? config.aiDifficulty : DEFAULT_MATCH_CONFIG.aiDifficulty;
     const aiBuildOrder = AI_BUILD_ORDER_PROFILES[config.aiBuildOrder] ? config.aiBuildOrder : DEFAULT_MATCH_CONFIG.aiBuildOrder;
+    const gameSpeed = GAME_SPEED_PROFILES[config.gameSpeed] ? config.gameSpeed : DEFAULT_MATCH_CONFIG.gameSpeed;
     return {
         startingCredits: [5000, 6500, 10000].includes(startingCredits) ? startingCredits : DEFAULT_MATCH_CONFIG.startingCredits,
         map,
         playerFaction,
         aiDifficulty,
         aiBuildOrder,
+        gameSpeed,
     };
 }
 
@@ -171,6 +179,14 @@ function getAIBuildOrderProfile(buildOrder) {
     return AI_BUILD_ORDER_PROFILES[buildOrder] || AI_BUILD_ORDER_PROFILES.balanced;
 }
 
+function getGameSpeedProfile(speed) {
+    return GAME_SPEED_PROFILES[speed] || GAME_SPEED_PROFILES.normal;
+}
+
+function getGameSpeedLabel(speed) {
+    return getGameSpeedProfile(speed).label;
+}
+
 function getAIProfile(matchConfig) {
     const difficultyProfile = getAIDifficultyProfile(matchConfig.aiDifficulty);
     const buildOrderProfile = getAIBuildOrderProfile(matchConfig.aiBuildOrder);
@@ -187,7 +203,8 @@ function updateSetupBriefing(config) {
     if (!briefingEl) return;
     const mapProfile = MAP_PROFILES[normalized.map];
     const aiPlan = getAIBuildOrderProfile(normalized.aiBuildOrder);
-    briefingEl.textContent = `${mapProfile.name.toUpperCase()} • ${normalized.aiDifficulty.toUpperCase()} AI • ${aiPlan.label.toUpperCase()} • $${normalized.startingCredits}`;
+    const speedLabel = getGameSpeedLabel(normalized.gameSpeed).toUpperCase();
+    briefingEl.textContent = `${mapProfile.name.toUpperCase()} • ${normalized.aiDifficulty.toUpperCase()} AI • ${aiPlan.label.toUpperCase()} • ${speedLabel} • $${normalized.startingCredits}`;
 }
 
 // ==================== GAME STATE ====================
@@ -225,6 +242,8 @@ class GameState {
         this.matchConfig = normalizeMatchConfig(matchConfig);
         this.mapProfile = MAP_PROFILES[this.matchConfig.map];
         this.aiConfig = getAIProfile(this.matchConfig);
+        this.gameSpeedProfile = getGameSpeedProfile(this.matchConfig.gameSpeed);
+        this.gameSpeedMultiplier = this.gameSpeedProfile.multiplier;
 
         // Map
         this.map = [];
@@ -2883,7 +2902,8 @@ class GameState {
 
     update(dt) {
         if (this.gameOver) return;
-        this.elapsedMs += dt;
+        const simDt = dt * this.gameSpeedMultiplier;
+        this.elapsedMs += simDt;
         for (const player of this.players) {
             const startingMCV = player.units.find(unit => unit.type === 'mcv' && unit.isStartingMCV && unit.state !== 'dead');
             if (startingMCV && startingMCV.autoDeployAt !== null && this.elapsedMs >= startingMCV.autoDeployAt) {
@@ -2892,14 +2912,14 @@ class GameState {
             }
         }
         this.updateCamera(dt);
-        this.updateBuildings(dt);
-        this.updateUnits(dt);
-        this.updateAutoAttack(dt);
-        this.updateProjectiles(dt);
-        this.updateEffects(dt);
+        this.updateBuildings(simDt);
+        this.updateUnits(simDt);
+        this.updateAutoAttack(simDt);
+        this.updateProjectiles(simDt);
+        this.updateEffects(simDt);
         this.updateFog();
         this.updatePowerState(this.players[this.currentPlayer]);
-        this.updateAI(dt);
+        this.updateAI(simDt);
         this.checkVictoryConditions();
     }
 
@@ -4778,6 +4798,7 @@ function bindSkirmishSetupPanel() {
         playerFaction: document.getElementById('setup-player-faction'),
         aiDifficulty: document.getElementById('setup-ai-difficulty'),
         aiBuildOrder: document.getElementById('setup-ai-build-order'),
+        gameSpeed: document.getElementById('setup-game-speed'),
     };
     if (!overlay || !startButton || Object.values(controls).some(control => !control)) return;
 
@@ -4788,6 +4809,7 @@ function bindSkirmishSetupPanel() {
         controls.playerFaction.value = normalized.playerFaction;
         controls.aiDifficulty.value = normalized.aiDifficulty;
         controls.aiBuildOrder.value = normalized.aiBuildOrder;
+        controls.gameSpeed.value = normalized.gameSpeed;
         updateSetupBriefing(normalized);
     };
 
@@ -4797,6 +4819,7 @@ function bindSkirmishSetupPanel() {
         playerFaction: controls.playerFaction.value,
         aiDifficulty: controls.aiDifficulty.value,
         aiBuildOrder: controls.aiBuildOrder.value,
+        gameSpeed: controls.gameSpeed.value,
     });
 
     applyControls(getStoredMatchConfig());
