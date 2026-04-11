@@ -35,7 +35,7 @@ window.BUILD_TYPES = {
         size: 2,
         powerSupply: 0,
         powerDrain: 25,
-        production: ['soldier'],
+        production: ['soldier', 'rocketInfantry', 'flakTrooper'],
         description: 'Trains infantry.',
         prerequisites: ['powerPlant']
     },

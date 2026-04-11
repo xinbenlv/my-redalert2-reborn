@@ -13,8 +13,62 @@ window.UNIT_TYPES = {
         sight: 6,
         armorType: 'light',
         role: 'infantry',
+        projectileSpeed: 8,
+        weaponType: 'rifle',
+        damageProfile: {
+            infantry: 1,
+            light: 0.85,
+            heavy: 0.5,
+            building: 0.6
+        },
         producedBy: 'barracks',
         prerequisites: ['barracks']
+    },
+    rocketInfantry: {
+        name: 'Rocket Infantry',
+        cost: 450,
+        trainTime: 5000,
+        hp: 70,
+        speed: 1.02,
+        damage: 26,
+        range: 6,
+        fireRate: 1500,
+        sight: 7,
+        armorType: 'light',
+        role: 'anti-armor infantry',
+        projectileSpeed: 7,
+        weaponType: 'rocket',
+        damageProfile: {
+            infantry: 0.55,
+            light: 1.2,
+            heavy: 1.9,
+            building: 1.45
+        },
+        producedBy: 'barracks',
+        prerequisites: ['barracks', 'refinery']
+    },
+    flakTrooper: {
+        name: 'Flak Trooper',
+        cost: 400,
+        trainTime: 4500,
+        hp: 80,
+        speed: 0.98,
+        damage: 17,
+        range: 5,
+        fireRate: 950,
+        sight: 6,
+        armorType: 'light',
+        role: 'anti-air infantry',
+        projectileSpeed: 8.5,
+        weaponType: 'flak',
+        damageProfile: {
+            infantry: 1.25,
+            light: 1.1,
+            heavy: 0.65,
+            building: 0.7
+        },
+        producedBy: 'barracks',
+        prerequisites: ['barracks', 'powerPlant']
     },
     harvester: {
         name: 'Harvester',
@@ -49,6 +103,13 @@ window.UNIT_TYPES = {
         armorType: 'heavy',
         role: 'vehicle',
         projectileSpeed: 10,
+        weaponType: 'cannon',
+        damageProfile: {
+            infantry: 0.8,
+            light: 1,
+            heavy: 1.15,
+            building: 1.1
+        },
         producedBy: 'warFactory',
         prerequisites: ['warFactory']
     }

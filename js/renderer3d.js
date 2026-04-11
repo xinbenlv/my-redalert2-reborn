@@ -267,7 +267,7 @@ class Renderer3D {
         if (this.unitMeshes.has(unit)) return;
 
         let mesh;
-        if (unit.type === 'soldier') mesh = this.models.createSoldier(factionColor);
+        if (unit.type === 'soldier' || unit.type === 'rocketInfantry' || unit.type === 'flakTrooper') mesh = this.models.createSoldier(factionColor);
         else if (unit.type === 'harvester') mesh = this.models.createHarvester(factionColor);
         else if (unit.type === 'tank') mesh = this.models.createTank(factionColor);
         if (!mesh) return;
@@ -318,7 +318,7 @@ class Renderer3D {
                 }
             });
             this.models.flashMuzzle(mesh, false);
-        } else if (unit.type === 'soldier') {
+        } else if (unit.type === 'soldier' || unit.type === 'rocketInfantry' || unit.type === 'flakTrooper') {
             mesh.rotation.x = 0;
             if (unit.state === 'moving') {
                 unit._walkPhase = (unit._walkPhase || 0) + dt * 0.008;
@@ -617,7 +617,7 @@ class Renderer3D {
         else if (type === 'barracks') model = this.models.createBarracks(factionColor);
         else if (type === 'powerPlant') model = this.models.createPowerPlant(factionColor);
         else if (type === 'warFactory') model = this.models.createWarFactory(factionColor);
-        else if (type === 'soldier') {
+        else if (type === 'soldier' || type === 'rocketInfantry' || type === 'flakTrooper') {
             model = this.models.createSoldier(factionColor);
             model.scale.setScalar(4);
         } else if (type === 'harvester') {

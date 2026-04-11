@@ -229,6 +229,8 @@ class GameState {
             role: def.role,
             armorType: def.armorType,
             projectileSpeed: def.projectileSpeed || 8,
+            weaponType: def.weaponType || 'rifle',
+            damageProfile: def.damageProfile || null,
             cargo: 0,
             cargoCapacity: def.cargoCapacity || 0,
             harvestRate: def.harvestRate || 0,
@@ -248,6 +250,21 @@ class GameState {
             pathIdx: 0,
             _walkPhase: 0
         };
+    }
+
+    getTargetArmorClass(target) {
+        if (!target) return 'light';
+        if (target.tx !== undefined) return 'building';
+        if (target.role === 'infantry' || target.role === 'anti-armor infantry' || target.role === 'anti-air infantry') {
+            return 'infantry';
+        }
+        return target.armorType || 'light';
+    }
+
+    getDamageAgainstTarget(baseDamage, damageProfile, target) {
+        const armorClass = this.getTargetArmorClass(target);
+        const multiplier = damageProfile?.[armorClass] ?? 1;
+        return Math.max(1, Math.round(baseDamage * multiplier));
     }
 
     // ==================== INPUT ====================
@@ -1540,6 +1557,8 @@ class GameState {
             tx, ty,
             speed: u.projectileSpeed || 8,
             damage: u.damage,
+            damageProfile: u.damageProfile || null,
+            weaponType: u.weaponType || 'rifle',
             owner: u.owner,
             target
         });
@@ -1563,7 +1582,8 @@ class GameState {
                         if (eu.state === 'dead' || eu.hp <= 0) continue;
                         const sd = Math.hypot(eu.x - hitX, eu.y - hitY);
                         if (sd <= splashRadius) {
-                            const dmg = (eu === p.target) ? p.damage : Math.floor(p.damage * 0.5);
+                            const directDamage = this.getDamageAgainstTarget(p.damage, p.damageProfile, eu);
+                            const dmg = (eu === p.target) ? directDamage : Math.max(1, Math.floor(directDamage * 0.5));
                             eu.hp -= dmg;
                             // Record who attacked this unit (for retaliation)
                             eu._lastAttackerOwner = p.owner;
@@ -1576,7 +1596,8 @@ class GameState {
                         const bx = eb.tx + 1, by = eb.ty + 1;
                         const sd = Math.hypot(bx - hitX, by - hitY);
                         if (sd <= splashRadius) {
-                            const dmg = (eb === p.target) ? p.damage : Math.floor(p.damage * 0.5);
+                            const directDamage = this.getDamageAgainstTarget(p.damage, p.damageProfile, eb);
+                            const dmg = (eb === p.target) ? directDamage : Math.max(1, Math.floor(directDamage * 0.5));
                             eb.hp -= dmg;
                         }
                     }
@@ -1676,6 +1697,9 @@ class GameState {
         const warFactories = this.getProductionBuildings(ai, 'harvester');
         const barracks = this.getProductionBuildings(ai, 'soldier');
         const tankFactories = this.getProductionBuildings(ai, 'tank');
+        const enemyPlayer = this.players[0];
+        const enemyHeavyUnits = enemyPlayer.units.filter(u => u.state !== 'dead' && u.armorType === 'heavy').length;
+        const enemyInfantryUnits = enemyPlayer.units.filter(u => u.state !== 'dead' && u.role !== 'harvester' && u.armorType !== 'heavy').length;
 
         if (warFactories.length > 0 && harvesters < Math.max(1, refineries) && ai.money >= UNIT_TYPES.harvester.cost) {
             const wf = warFactories.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
@@ -1692,11 +1716,28 @@ class GameState {
             else wf.trainQueue.push('tank');
         }
 
-        if (barracks.length > 0 && ai.money >= UNIT_TYPES.soldier.cost) {
+        const aiRocketCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'rocketInfantry').length + this._getTotalTrainQueue(ai, 'rocketInfantry');
+        const aiFlakCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'flakTrooper').length + this._getTotalTrainQueue(ai, 'flakTrooper');
+        const aiSoldierCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'soldier').length + this._getTotalTrainQueue(ai, 'soldier');
+
+        if (barracks.length > 0) {
             const bb = barracks.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
-            ai.money -= UNIT_TYPES.soldier.cost;
-            if (!bb.training) bb.training = 'soldier';
-            else bb.trainQueue.push('soldier');
+            let infantryChoice = 'soldier';
+            if (enemyHeavyUnits > aiRocketCount && ai.money >= UNIT_TYPES.rocketInfantry.cost) {
+                infantryChoice = 'rocketInfantry';
+            } else if (enemyInfantryUnits > aiFlakCount + 1 && ai.money >= UNIT_TYPES.flakTrooper.cost) {
+                infantryChoice = 'flakTrooper';
+            } else if (aiSoldierCount > 0 && aiSoldierCount % 3 === 0 && ai.money >= UNIT_TYPES.rocketInfantry.cost) {
+                infantryChoice = 'rocketInfantry';
+            } else if (aiSoldierCount > 1 && aiSoldierCount % 2 === 0 && ai.money >= UNIT_TYPES.flakTrooper.cost) {
+                infantryChoice = 'flakTrooper';
+            } else if (ai.money < UNIT_TYPES.soldier.cost) {
+                return;
+            }
+
+            ai.money -= UNIT_TYPES[infantryChoice].cost;
+            if (!bb.training) bb.training = infantryChoice;
+            else bb.trainQueue.push(infantryChoice);
         }
 
         const combatUnits = ai.units.filter(u => this.isCombatUnit(u) && u.state === 'idle');
@@ -2170,7 +2211,7 @@ class GameState {
                 this.addBuildItem(container, type, def.name, def.cost, def.description, false);
             });
         } else {
-            ['soldier', 'harvester', 'tank'].forEach(type => {
+            ['soldier', 'rocketInfantry', 'flakTrooper', 'harvester', 'tank'].forEach(type => {
                 const def = UNIT_TYPES[type];
                 this.addBuildItem(container, type, def.name, def.cost, def.role, true);
             });

@@ -96,8 +96,8 @@
 - [x] 基础 Rifle Infantry（Soldier）
 - [ ] Engineer
 - [ ] Attack Dog
-- [ ] Rocket Infantry / anti-armor infantry
-- [ ] Flak Trooper / anti-air infantry
+- [x] Rocket Infantry / anti-armor infantry
+- [x] Flak Trooper / anti-air infantry
 - [ ] Spy
 - [ ] Tanya / elite commando 类单位
 - [ ] Desolator / Tesla Trooper / Chrono Legionnaire / GI 等特色单位
@@ -265,10 +265,10 @@
 ### C1. P0：先把“遭遇战成立”补齐
 - [ ] Construction Yard / MCV / 正式开局
 - [ ] Engineer
-- [ ] Dog / Rocket infantry / AA infantry（至少 2 个）
+- [x] Dog / Rocket infantry / AA infantry（至少 2 个）
 - [ ] Radar 独立建筑化
 - [x] 取消生产 / 退款
-- [ ] waypoint / rally 可视化
+- [x] waypoint / rally 可视化
 - [ ] 基础防御建筑（至少 2 个）
 - [ ] AI 护矿与骚扰
 - [ ] 更完整的 skirmish setup
