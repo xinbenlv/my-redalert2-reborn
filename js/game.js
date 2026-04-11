@@ -974,9 +974,23 @@ class GameState {
         return !!(entity && entity.tx === undefined && (entity.isAirUnit || entity.armorType === 'air' || entity.role === 'aircraft'));
     }
 
+    isGroundAttackTarget(target) {
+        return !!(target && target.isGroundTarget && target.x !== undefined && target.y !== undefined);
+    }
+
+    canUnitForceFire(unit) {
+        return !!(this.canUnitReceiveCommand(unit)
+            && this.isCombatUnit(unit)
+            && unit.canAttackGround !== false
+            && !unit.directFire);
+    }
+
     canEntityTarget(attacker, target) {
         if (!attacker || !target) return false;
         if (this.isAirUnit(attacker) && attacker.ammoCapacity > 0 && attacker.ammo <= 0) return false;
+        if (this.isGroundAttackTarget(target)) {
+            return this.canUnitForceFire(attacker);
+        }
         if (this.isAirUnit(target)) {
             if (!attacker.canAttackAir) return false;
             const targetArmorClass = this.getTargetArmorClass(target);
@@ -1096,6 +1110,10 @@ class GameState {
                 return;
             }
             if (lowerKey === 'f' && this.toggleForceMoveMode()) {
+                e.preventDefault();
+                return;
+            }
+            if (lowerKey === 'c' && this.toggleForceFireMode()) {
                 e.preventDefault();
                 return;
             }
@@ -1479,6 +1497,32 @@ class GameState {
             return;
         }
 
+        const forceFireActive = this.commandMode === 'set-force-fire' || e.ctrlKey;
+        if (forceFireActive) {
+            const units = this.selected.filter(unit => this.canUnitForceFire(unit));
+            if (this.commandMode === 'set-force-fire') {
+                this.commandMode = null;
+            }
+            if (!units.length) {
+                this.updateSelectionInfo();
+                return;
+            }
+            let issuedForceFire = false;
+            units.forEach((unit, index) => {
+                const angle = units.length > 1 ? (Math.PI * 2 * index) / units.length : 0;
+                const radius = units.length > 1 ? Math.min(1.15, 0.3 * units.length) : 0;
+                const tx = Math.max(0.5, Math.min(MAP_SIZE - 0.5, tile.x + Math.cos(angle) * radius));
+                const ty = Math.max(0.5, Math.min(MAP_SIZE - 0.5, tile.y + Math.sin(angle) * radius));
+                issuedForceFire = this.issueGroundAttackOrder(unit, tx, ty) || issuedForceFire;
+            });
+            if (issuedForceFire) {
+                this.commandPings.push({ tx: tile.x, ty: tile.y, color: '#ff8855', time: 0 });
+                this.eva(units.length === 1 ? `${this.getDisplayName(units[0].type)} force-firing.` : `${units.length} units force-firing.`);
+            }
+            this.updateSelectionInfo();
+            return;
+        }
+
         const friendlyTransport = this.players[this.currentPlayer].units.find(unit =>
             this.isTransportUnit(unit) && Math.hypot(unit.x - tile.x, unit.y - tile.y) < 1.5
         );
@@ -1634,6 +1678,11 @@ class GameState {
         }
 
         canvas.style.cursor = '';
+
+        if (this.commandMode === 'set-force-fire') {
+            canvas.classList.add('cursor-attack');
+            return;
+        }
 
         if (this.selected.length > 0 && this.selected.some(s => this.canUnitReceiveCommand(s))) {
             const enemy = this._findEnemyUnitAt(tile.x, tile.y) || this._findEnemyBuildingAt(tile.x, tile.y);
@@ -1886,6 +1935,15 @@ class GameState {
         return true;
     }
 
+    toggleForceFireMode() {
+        const units = this.selected.filter(unit => this.canUnitForceFire(unit));
+        if (!units.length) return false;
+        this.commandMode = this.commandMode === 'set-force-fire' ? null : 'set-force-fire';
+        this.eva(this.commandMode ? 'Right-click any ground tile to force-fire that position.' : 'Force-fire cancelled.');
+        this.updateSelectionInfo();
+        return true;
+    }
+
     stopSelectedUnits() {
         const units = this.getSelectedCommandableUnits();
         if (!units.length) return false;
@@ -1942,6 +2000,32 @@ class GameState {
         if (!this.canUnitReceiveCommand(unit)) return false;
         this.clearUnitOrders(unit);
         this.issueMoveOrder(unit, tx, ty, 'moving', { forceMove: true });
+        return true;
+    }
+
+    createGroundAttackTarget(tx, ty) {
+        return {
+            isGroundTarget: true,
+            x: Math.max(0.5, Math.min(MAP_SIZE - 0.5, tx)),
+            y: Math.max(0.5, Math.min(MAP_SIZE - 0.5, ty)),
+            owner: null,
+            armorType: 'light'
+        };
+    }
+
+    issueGroundAttackOrder(unit, tx, ty) {
+        if (!this.canUnitForceFire(unit)) return false;
+        const groundTarget = this.createGroundAttackTarget(tx, ty);
+        this.clearUnitOrders(unit);
+        unit.captureTarget = null;
+        unit.attackTarget = groundTarget;
+        unit.target = null;
+        unit.state = 'attacking';
+        unit.forceMove = false;
+        unit.waypointQueue = [];
+        unit._savedWaypointQueue = [];
+        unit.path = this.isAirUnit(unit) ? null : this.findPath(Math.round(unit.x), Math.round(unit.y), Math.floor(groundTarget.x), Math.floor(groundTarget.y));
+        unit.pathIdx = 0;
         return true;
     }
 
@@ -2533,6 +2617,9 @@ class GameState {
 
     getEntityAnchor(entity) {
         if (!entity) return null;
+        if (this.isGroundAttackTarget(entity)) {
+            return { x: entity.x, y: entity.y };
+        }
         if (entity.tx !== undefined) {
             return {
                 x: entity.tx + entity.size / 2 - 0.5,
@@ -2616,9 +2703,12 @@ class GameState {
     getEntityEngagementOverlay(entity) {
         if (!entity?.attackTarget) return null;
         const target = entity.attackTarget;
-        const targetAlive = target.tx !== undefined
-            ? (target.hp ?? 0) > 0
-            : target.state !== 'dead' && (target.hp ?? 0) > 0;
+        const isGroundTarget = this.isGroundAttackTarget(target);
+        const targetAlive = isGroundTarget
+            ? true
+            : (target.tx !== undefined
+                ? (target.hp ?? 0) > 0
+                : target.state !== 'dead' && (target.hp ?? 0) > 0);
         if (!targetAlive || !this.canEntityTarget(entity, target)) return null;
         const source = this.getEntityAnchor(entity);
         const targetAnchor = this.getEntityAnchor(target);
@@ -2627,10 +2717,10 @@ class GameState {
         const attackAgainstAir = this.isAirUnit(target);
         const strikeFromAir = this.isAirUnit(entity);
         return {
-            kind: attackAgainstAir ? 'anti-air-lock' : (strikeFromAir ? 'airstrike' : 'attack'),
+            kind: isGroundTarget ? 'attack' : (attackAgainstAir ? 'anti-air-lock' : (strikeFromAir ? 'airstrike' : 'attack')),
             source,
             target: targetAnchor,
-            label: attackAgainstAir ? 'AA LOCK' : (strikeFromAir ? 'AIRSTRIKE' : 'ATTACK'),
+            label: isGroundTarget ? 'FORCE FIRE' : (attackAgainstAir ? 'AA LOCK' : (strikeFromAir ? 'AIRSTRIKE' : 'ATTACK')),
             entity,
             attackTarget: target,
         };
@@ -3406,12 +3496,16 @@ class GameState {
 
                     if (u.state === 'attacking' && u.attackTarget) {
                         const at = u.attackTarget;
+                        const isGroundTarget = this.isGroundAttackTarget(at);
                         targetX = at.x !== undefined ? at.x : at.tx + 1;
                         targetY = at.y !== undefined ? at.y : at.ty + 1;
 
                         const dist = Math.hypot(u.x - targetX, u.y - targetY);
+                        const invalidTarget = isGroundTarget
+                            ? !this.canEntityTarget(u, at)
+                            : ((at.hp !== undefined && at.hp <= 0) || at.state === 'dead' || !this.canEntityTarget(u, at));
 
-                        if ((at.hp !== undefined && at.hp <= 0) || at.state === 'dead' || !this.canEntityTarget(u, at)) {
+                        if (invalidTarget) {
                             u.attackTarget = null;
                             if (!this.advancePatrolRoute(u)) {
                                 u.state = 'idle';
@@ -3426,6 +3520,13 @@ class GameState {
                             if (u.fireTimer <= 0) {
                                 u.fireTimer = u.fireRate;
                                 this.fireAt(u, at);
+                                if (isGroundTarget) {
+                                    u.attackTarget = null;
+                                    u.state = 'idle';
+                                }
+                            }
+                            if (isGroundTarget) {
+                                continue;
                             }
                             continue;
                         }
@@ -3691,6 +3792,7 @@ class GameState {
         const source = this.getEntityAnchor(u);
         const targetAnchor = this.getEntityAnchor(target);
         if (!source || !targetAnchor) return;
+        const isGroundTarget = this.isGroundAttackTarget(target);
         if (this.isAirUnit(u) && u.ammoCapacity > 0) {
             if (u.ammo <= 0) return;
             u.ammo = Math.max(0, u.ammo - 1);
@@ -3701,7 +3803,7 @@ class GameState {
         const tx = targetAnchor.x;
         const ty = targetAnchor.y;
 
-        if (u.directFire) {
+        if (u.directFire && !isGroundTarget) {
             const directDamage = this.getDamageAgainstTarget(u.damage, u.damageProfile, target);
             if (directDamage > 0) {
                 target.hp -= directDamage;
@@ -4812,6 +4914,10 @@ class GameState {
                 this.toggleForceMoveMode();
                 return;
             }
+            if (action === 'force-fire') {
+                this.toggleForceFireMode();
+                return;
+            }
             if (action.startsWith('stance-')) {
                 this.setSelectedUnitStance(action.replace('stance-', ''));
                 return;
@@ -5047,17 +5153,17 @@ class GameState {
                     ? UNIT_STANCE_ORDER.map(stance => `<button class="selection-action ${s.stance === stance ? 'active' : ''}" data-action="stance-${stance}">${UNIT_STANCE_PROFILES[stance].label}</button>`).join('')
                     : '';
                 const commandButtons = this.canUnitReceiveCommand(s)
-                    ? `<button class="selection-action" data-action="stop">Stop</button><button class="selection-action" data-action="scatter">Scatter</button><button class="selection-action ${this.commandMode === 'set-force-move' ? 'active' : ''}" data-action="force-move">${this.commandMode === 'set-force-move' ? 'Placing Force Move' : 'Force Move'}</button><button class="selection-action ${this.commandMode === 'set-patrol' ? 'active' : ''}" data-action="patrol">${this.commandMode === 'set-patrol' ? 'Placing Patrol' : 'Patrol'}</button>${stanceButtons}`
+                    ? `<button class="selection-action" data-action="stop">Stop</button><button class="selection-action" data-action="scatter">Scatter</button>${this.canUnitForceFire(s) ? `<button class="selection-action ${this.commandMode === 'set-force-fire' ? 'active' : ''}" data-action="force-fire">${this.commandMode === 'set-force-fire' ? 'Placing Force Fire' : 'Force Fire'}</button>` : ''}<button class="selection-action ${this.commandMode === 'set-force-move' ? 'active' : ''}" data-action="force-move">${this.commandMode === 'set-force-move' ? 'Placing Force Move' : 'Force Move'}</button><button class="selection-action ${this.commandMode === 'set-patrol' ? 'active' : ''}" data-action="patrol">${this.commandMode === 'set-patrol' ? 'Placing Patrol' : 'Patrol'}</button>${stanceButtons}`
                     : '';
                 const unloadButton = this.isTransportUnit(s)
                     ? `<button class="selection-action" data-action="unload" ${s.passengers.length ? '' : 'disabled'}>Unload APC</button>`
                     : '';
                 info.innerHTML = `<div style="color:#00ff88">${this.getDisplayName(s.type)}</div>
                     <div>HP: ${Math.floor(s.hp)}/${s.maxHp}</div>
-                    <div>${[...extras, `STANCE: ${this.getUnitStanceLabel(s).toUpperCase()}`, ...(s.forceMove ? ['ORDER: FORCE MOVE'] : []), ...(s.waypointQueue?.length ? [`WAYPOINTS: ${s.waypointQueue.length} queued`] : []), ...(s.patrolRoute?.length === 2 ? [`PATROL: ${Math.round(s.patrolRoute[0].x)}, ${Math.round(s.patrolRoute[0].y)} ⇄ ${Math.round(s.patrolRoute[1].x)}, ${Math.round(s.patrolRoute[1].y)}`] : [])].join(' | ')}</div>
+                    <div>${[...extras, `STANCE: ${this.getUnitStanceLabel(s).toUpperCase()}`, ...(this.isGroundAttackTarget(s.attackTarget) ? ['ORDER: FORCE FIRE'] : []), ...(s.forceMove ? ['ORDER: FORCE MOVE'] : []), ...(s.waypointQueue?.length ? [`WAYPOINTS: ${s.waypointQueue.length} queued`] : []), ...(s.patrolRoute?.length === 2 ? [`PATROL: ${Math.round(s.patrolRoute[0].x)}, ${Math.round(s.patrolRoute[0].y)} ⇄ ${Math.round(s.patrolRoute[1].x)}, ${Math.round(s.patrolRoute[1].y)}`] : [])].join(' | ')}</div>
                     ${veterancyBits.length ? `<div style="color:#ffd36b">${veterancyBits.join(' | ')}</div>` : ''}
                     <div style="color:#666;font-size:9px">${s.state}</div>
-                    ${(deployButton || unloadButton || commandButtons) ? `<div class="selection-actions">${deployButton}${unloadButton}${commandButtons}</div><div class="selection-hint">${this.commandMode === 'set-patrol' ? 'Right-click any visible tile to place the patrol turn-around point.' : (this.commandMode === 'set-force-move' ? 'Right-click any tile or enemy to move through without auto-engaging.' : 'Stop cancels the current order. Scatter sends the selection to nearby offsets. Shift+right-click queues waypoints. Force Move ignores en-route auto-engage until arrival. Patrol loops between the current position and a chosen tile. Stances: Guard / Aggressive / Hold Ground. Hotkeys: S / X / F / P / G / A / H.')}</div>` : ''}`;
+                    ${(deployButton || unloadButton || commandButtons) ? `<div class="selection-actions">${deployButton}${unloadButton}${commandButtons}</div><div class="selection-hint">${this.commandMode === 'set-patrol' ? 'Right-click any visible tile to place the patrol turn-around point.' : (this.commandMode === 'set-force-move' ? 'Right-click any tile or enemy to move through without auto-engaging.' : (this.commandMode === 'set-force-fire' ? 'Right-click any ground position to barrage that tile. Ctrl+right-click also force-fires instantly.' : 'Stop cancels the current order. Scatter sends the selection to nearby offsets. Shift+right-click queues waypoints. Force Fire barrages a ground tile. Force Move ignores en-route auto-engage until arrival. Patrol loops between the current position and a chosen tile. Stances: Guard / Aggressive / Hold Ground. Hotkeys: S / X / C / F / P / G / A / H.'))}</div>` : ''}`;
             } else {
                 const def = BUILD_TYPES[s.type];
                 const statusBits = [];
@@ -5120,7 +5226,7 @@ class GameState {
                 <div style="color:#ffd36b">${veterans} veteran | ${elites} elite</div>
                 <div>Stance: ${stanceLabel}</div>
                 <div style="color:#666;font-size:9px">Right-click commands apply to combat units only</div>
-                ${commandableUnits.length ? `<div class="selection-actions"><button class="selection-action" data-action="stop">Stop</button><button class="selection-action" data-action="scatter">Scatter</button><button class="selection-action ${this.commandMode === 'set-force-move' ? 'active' : ''}" data-action="force-move">${this.commandMode === 'set-force-move' ? 'Placing Force Move' : 'Force Move'}</button><button class="selection-action ${this.commandMode === 'set-patrol' ? 'active' : ''}" data-action="patrol">${this.commandMode === 'set-patrol' ? 'Placing Patrol' : 'Patrol'}</button>${stanceButtons}</div><div class="selection-hint">${this.commandMode === 'set-patrol' ? 'Right-click any visible tile to place the patrol turn-around point.' : (this.commandMode === 'set-force-move' ? 'Right-click any tile or enemy to move through without auto-engaging.' : 'Stop cancels the current order. Scatter fans the group into nearby positions. Shift+right-click queues waypoints. Force Move ignores en-route auto-engage until arrival. Patrol loops between the current position and a chosen tile. Stances: Guard / Aggressive / Hold Ground. Hotkeys: S / X / F / P / G / A / H.')}</div>` : ''}`;
+                ${commandableUnits.length ? `<div class="selection-actions"><button class="selection-action" data-action="stop">Stop</button><button class="selection-action" data-action="scatter">Scatter</button>${commandableUnits.some(unit => this.canUnitForceFire(unit)) ? `<button class="selection-action ${this.commandMode === 'set-force-fire' ? 'active' : ''}" data-action="force-fire">${this.commandMode === 'set-force-fire' ? 'Placing Force Fire' : 'Force Fire'}</button>` : ''}<button class="selection-action ${this.commandMode === 'set-force-move' ? 'active' : ''}" data-action="force-move">${this.commandMode === 'set-force-move' ? 'Placing Force Move' : 'Force Move'}</button><button class="selection-action ${this.commandMode === 'set-patrol' ? 'active' : ''}" data-action="patrol">${this.commandMode === 'set-patrol' ? 'Placing Patrol' : 'Patrol'}</button>${stanceButtons}</div><div class="selection-hint">${this.commandMode === 'set-patrol' ? 'Right-click any visible tile to place the patrol turn-around point.' : (this.commandMode === 'set-force-move' ? 'Right-click any tile or enemy to move through without auto-engaging.' : (this.commandMode === 'set-force-fire' ? 'Right-click any ground position to barrage that tile. Ctrl+right-click also force-fires instantly.' : 'Stop cancels the current order. Scatter fans the group into nearby positions. Shift+right-click queues waypoints. Force Fire barrages a ground tile. Force Move ignores en-route auto-engage until arrival. Patrol loops between the current position and a chosen tile. Stances: Guard / Aggressive / Hold Ground. Hotkeys: S / X / C / F / P / G / A / H.'))}</div>` : ''}`;
         }
     }
 
