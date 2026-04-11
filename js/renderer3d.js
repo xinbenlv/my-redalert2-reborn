@@ -228,6 +228,7 @@ class Renderer3D {
         else if (building.type === 'powerPlant') mesh = this.models.createPowerPlant(factionColor);
         else if (building.type === 'radarDome') mesh = this.models.createRadarDome(factionColor);
         else if (building.type === 'warFactory') mesh = this.models.createWarFactory(factionColor);
+        else if (building.type === 'battleLab') mesh = this.models.createBattleLab(factionColor);
         else if (building.type === 'pillbox') mesh = this.models.createPillbox(factionColor);
         else if (building.type === 'sentryGun') mesh = this.models.createSentryGun(factionColor);
 
@@ -275,6 +276,7 @@ class Renderer3D {
         else if (unit.type === 'harvester') mesh = this.models.createHarvester(factionColor);
         else if (unit.type === 'mcv') mesh = this.models.createMCV(factionColor);
         else if (unit.type === 'tank') mesh = this.models.createTank(factionColor);
+        else if (unit.type === 'apocalypseTank') mesh = this.models.createApocalypseTank(factionColor);
         if (!mesh) return;
 
         mesh.position.set(
@@ -337,12 +339,12 @@ class Renderer3D {
                 this.models.animateSoldierIdle(mesh);
                 this.models.flashMuzzle(mesh, false);
             }
-        } else if (unit.type === 'tank') {
+        } else if (unit.type === 'tank' || unit.type === 'apocalypseTank') {
             mesh.rotation.x = 0;
             const flashing = unit.fireRate > 0 && unit.fireTimer > unit.fireRate - 120;
             this.models.flashMuzzle(mesh, flashing);
             if (mesh.userData.turret) {
-                mesh.userData.turret.rotation.y = Math.sin(this.time * 0.8 + unit.x) * 0.02;
+                mesh.userData.turret.rotation.y = Math.sin(this.time * 0.8 + unit.x) * (unit.type === 'apocalypseTank' ? 0.03 : 0.02);
             }
         } else if (unit.type === 'harvester') {
             mesh.rotation.x = 0;
@@ -486,6 +488,7 @@ class Renderer3D {
             else if (type === 'powerPlant') this._placementPreview = this.models.createPowerPlant(factionColor);
             else if (type === 'radarDome') this._placementPreview = this.models.createRadarDome(factionColor);
             else if (type === 'warFactory') this._placementPreview = this.models.createWarFactory(factionColor);
+            else if (type === 'battleLab') this._placementPreview = this.models.createBattleLab(factionColor);
             else if (type === 'pillbox') this._placementPreview = this.models.createPillbox(factionColor);
             else if (type === 'sentryGun') this._placementPreview = this.models.createSentryGun(factionColor);
             this._placementPreview.traverse(child => {
@@ -633,6 +636,7 @@ class Renderer3D {
         else if (type === 'powerPlant') model = this.models.createPowerPlant(factionColor);
         else if (type === 'radarDome') model = this.models.createRadarDome(factionColor);
         else if (type === 'warFactory') model = this.models.createWarFactory(factionColor);
+        else if (type === 'battleLab') model = this.models.createBattleLab(factionColor);
         else if (type === 'pillbox') model = this.models.createPillbox(factionColor);
         else if (type === 'sentryGun') model = this.models.createSentryGun(factionColor);
         else if (type === 'soldier' || type === 'rocketInfantry' || type === 'flakTrooper' || type === 'engineer') {
@@ -647,6 +651,9 @@ class Renderer3D {
         } else if (type === 'tank') {
             model = this.models.createTank(factionColor);
             model.scale.setScalar(2.3);
+        } else if (type === 'apocalypseTank') {
+            model = this.models.createApocalypseTank(factionColor);
+            model.scale.setScalar(2.15);
         }
 
         if (model) {

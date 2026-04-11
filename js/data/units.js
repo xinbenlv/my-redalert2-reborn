@@ -146,5 +146,28 @@ window.UNIT_TYPES = {
         },
         producedBy: 'warFactory',
         prerequisites: ['warFactory']
+    },
+    apocalypseTank: {
+        name: 'Apocalypse Tank',
+        cost: 1750,
+        trainTime: 12000,
+        hp: 360,
+        speed: 0.62,
+        damage: 62,
+        range: 5.8,
+        fireRate: 1900,
+        sight: 8,
+        armorType: 'heavy',
+        role: 'heavy breakthrough tank',
+        projectileSpeed: 9,
+        weaponType: 'heavyCannon',
+        damageProfile: {
+            infantry: 0.95,
+            light: 1.2,
+            heavy: 1.55,
+            building: 1.45
+        },
+        producedBy: 'warFactory',
+        prerequisites: ['warFactory', 'battleLab']
     }
 };

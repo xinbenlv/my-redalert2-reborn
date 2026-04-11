@@ -78,6 +78,19 @@ window.BUILD_TYPES = {
         description: 'Produces vehicles.',
         prerequisites: ['constructionYard', 'powerPlant', 'refinery', 'barracks']
     },
+    battleLab: {
+        name: 'Battle Lab',
+        cost: 2500,
+        buildTime: 14000,
+        hp: 1200,
+        sight: 7,
+        size: 3,
+        powerSupply: 0,
+        powerDrain: 60,
+        providesTech: true,
+        description: 'High-tech command lab that unlocks experimental armor.',
+        prerequisites: ['constructionYard', 'powerPlant', 'refinery', 'radarDome', 'warFactory']
+    },
     pillbox: {
         name: 'Pillbox',
         cost: 700,

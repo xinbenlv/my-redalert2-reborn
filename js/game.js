@@ -2102,10 +2102,12 @@ class GameState {
 
             if (type === 'harvester') score += 120;
             else if (type === 'powerPlant') score += 80;
+            else if (type === 'battleLab') score += 85;
             else if (type === 'warFactory') score += 70;
             else if (type === 'refinery') score += 65;
             else if (type === 'radarDome') score += 45;
             else if (type === 'barracks') score += 35;
+            else if (type === 'apocalypseTank') score += 55;
             else if (type === 'tank') score += 30;
             else if (role === 'harvester') score += 120;
             else if (role === 'engineer') score += 40;
@@ -2236,6 +2238,7 @@ class GameState {
         if (!builtTypes.has('barracks') && tryBuild('barracks')) return;
         if (!builtTypes.has('radarDome') && tryBuild('radarDome')) return;
         if (!builtTypes.has('warFactory') && tryBuild('warFactory')) return;
+        if (!builtTypes.has('battleLab') && builtTypes.has('warFactory') && ai.money >= BUILD_TYPES.battleLab.cost && tryBuild('battleLab')) return;
         if (ai.buildings.filter(b => b.type === 'powerPlant').length < 2 && ai.money > 2200 && tryBuild('powerPlant')) return;
         if (builtTypes.has('barracks') && ai.buildings.filter(b => b.type === 'pillbox' && b.hp > 0).length < 1 && ai.money >= BUILD_TYPES.pillbox.cost && tryBuild('pillbox')) return;
         if (builtTypes.has('warFactory') && ai.buildings.filter(b => b.type === 'sentryGun' && b.hp > 0).length < 1 && ai.money >= BUILD_TYPES.sentryGun.cost && tryBuild('sentryGun')) return;
@@ -2245,8 +2248,10 @@ class GameState {
         const warFactories = this.getProductionBuildings(ai, 'harvester');
         const barracks = this.getProductionBuildings(ai, 'soldier');
         const tankFactories = this.getProductionBuildings(ai, 'tank');
+        const apocalypseFactories = this.getProductionBuildings(ai, 'apocalypseTank');
         const enemyPlayer = this.players[0];
         const enemyHeavyUnits = enemyPlayer.units.filter(u => u.state !== 'dead' && u.armorType === 'heavy').length;
+        const enemyBuildings = enemyPlayer.buildings.filter(b => b.built && b.hp > 0).length;
         const enemyInfantryUnits = enemyPlayer.units.filter(u => u.state !== 'dead' && u.role !== 'harvester' && u.armorType !== 'heavy').length;
 
         if (warFactories.length > 0 && harvesters < Math.max(1, refineries) && ai.money >= UNIT_TYPES.harvester.cost) {
@@ -2254,6 +2259,15 @@ class GameState {
             ai.money -= UNIT_TYPES.harvester.cost;
             if (!wf.training) wf.training = 'harvester';
             else wf.trainQueue.push('harvester');
+            return;
+        }
+
+        const aiApocalypseCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'apocalypseTank').length + this._getTotalTrainQueue(ai, 'apocalypseTank');
+        if (builtTypes.has('battleLab') && apocalypseFactories.length > 0 && ai.money >= UNIT_TYPES.apocalypseTank.cost && (enemyHeavyUnits >= 2 || enemyBuildings >= 5 || aiApocalypseCount < 1)) {
+            const wf = apocalypseFactories.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
+            ai.money -= UNIT_TYPES.apocalypseTank.cost;
+            if (!wf.training) wf.training = 'apocalypseTank';
+            else wf.trainQueue.push('apocalypseTank');
             return;
         }
 
@@ -2762,12 +2776,12 @@ class GameState {
         const p = this.players[this.currentPlayer];
 
         if (activeTab === 'buildings') {
-            ['powerPlant', 'refinery', 'barracks', 'radarDome', 'warFactory', 'pillbox', 'sentryGun'].forEach(type => {
+            ['powerPlant', 'refinery', 'barracks', 'radarDome', 'warFactory', 'battleLab', 'pillbox', 'sentryGun'].forEach(type => {
                 const def = BUILD_TYPES[type];
                 this.addBuildItem(container, type, def.name, def.cost, def.description, false);
             });
         } else {
-            ['soldier', 'rocketInfantry', 'flakTrooper', 'engineer', 'harvester', 'tank', 'mcv'].forEach(type => {
+            ['soldier', 'rocketInfantry', 'flakTrooper', 'engineer', 'harvester', 'tank', 'apocalypseTank', 'mcv'].forEach(type => {
                 const def = UNIT_TYPES[type];
                 const description = type === 'engineer' ? 'Captures enemy buildings on contact.' : def.role;
                 this.addBuildItem(container, type, def.name, def.cost, description, true);

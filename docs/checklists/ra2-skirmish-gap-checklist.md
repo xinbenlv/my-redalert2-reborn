@@ -73,7 +73,7 @@
 
 ### B3.3 科技建筑
 - [x] Radar / Radar Dome 作为独立建筑，而不是 power 状态文案
-- [ ] Battle Lab / tech center
+- [x] Battle Lab / tech center
 - [ ] 机场 / 高科前置链
 - [ ] 秘密实验室 / tech pickup 机制（可选）
 
@@ -274,7 +274,7 @@
 - [x] 更完整的 skirmish setup
 
 ### C2. P1：把“中局节奏”补出来
-- [ ] Battle Lab
+- [x] Battle Lab
 - [ ] 更多载具与反制链
 - [ ] veterancy
 - [ ] air units
