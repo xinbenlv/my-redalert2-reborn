@@ -17,24 +17,38 @@ const HARVESTER_RETREAT_RECENT_HIT_MS = 3200;
 const HARVESTER_RETREAT_HEALTH_RATIO = 0.55;
 const HARVESTER_RETREAT_THREAT_RADIUS = 6.5;
 const HARVESTER_RETREAT_SAFE_HOLD_MS = 1800;
+const NEUTRAL_PLAYER_INDEX = 2;
 const MAP_PROFILES = {
     classic: {
         id: 'classic',
         name: 'Classic Frontier',
         briefing: 'Balanced ore clusters with the familiar river split.',
         spawnPoints: [{ x: 8, y: 8 }, { x: MAP_SIZE - 10, y: MAP_SIZE - 10 }],
+        neutralStructures: [
+            { type: 'battleBunker', x: 19, y: 19 },
+        ],
     },
     crossroads: {
         id: 'crossroads',
         name: 'Crossroads',
         briefing: 'A harder center fight with a broad crossing and exposed ore lanes.',
         spawnPoints: [{ x: 10, y: 10 }, { x: MAP_SIZE - 13, y: MAP_SIZE - 13 }],
+        neutralStructures: [
+            { type: 'battleBunker', x: 18, y: 18 },
+            { type: 'battleBunker', x: 21, y: 18 },
+            { type: 'battleBunker', x: 18, y: 21 },
+            { type: 'battleBunker', x: 21, y: 21 },
+        ],
     },
     'twin-rivers': {
         id: 'twin-rivers',
         name: 'Twin Rivers',
         briefing: 'Two river channels carve the battlefield, with a contested central ore basin and safer flank expansions.',
         spawnPoints: [{ x: 7, y: MAP_SIZE - 10 }, { x: MAP_SIZE - 10, y: 8 }],
+        neutralStructures: [
+            { type: 'battleBunker', x: 14, y: 18 },
+            { type: 'battleBunker', x: 25, y: 18 },
+        ],
     },
 };
 const DEFAULT_MATCH_CONFIG = {
@@ -222,7 +236,8 @@ class GameState {
         const aiFaction = getFactionProfile(this.matchConfig.playerFaction, 'ai');
         this.players = [
             { faction: playerFaction.faction, money: this.matchConfig.startingCredits, buildings: [], units: [], color: playerFaction.color, isAI: false, lowPowerNotified: false, startingBaseGranted: false },
-            { faction: aiFaction.faction, money: this.matchConfig.startingCredits, buildings: [], units: [], color: aiFaction.color, isAI: true, lowPowerNotified: false, startingBaseGranted: false, aiBuildOrder: this.aiConfig.buildOrder, aiBuildOrderLabel: this.aiConfig.label }
+            { faction: aiFaction.faction, money: this.matchConfig.startingCredits, buildings: [], units: [], color: aiFaction.color, isAI: true, lowPowerNotified: false, startingBaseGranted: false, aiBuildOrder: this.aiConfig.buildOrder, aiBuildOrderLabel: this.aiConfig.label },
+            { faction: 'neutral', money: 0, buildings: [], units: [], color: '#8a8a8a', isAI: false, isNeutral: true, canLose: false, lowPowerNotified: false, startingBaseGranted: true }
         ];
         this.currentPlayer = 0;
         this.matchStats = this.players.map(() => this.createEmptyPlayerStats());
@@ -265,6 +280,7 @@ class GameState {
 
         // Spawn bases for both players
         this.mapProfile.spawnPoints.forEach((spawn, index) => this.spawnBase(index, spawn.x, spawn.y));
+        this.spawnNeutralStructures();
 
         // Set initial camera on player base
         const playerSpawn = this.mapProfile.spawnPoints[0] || { x: 10, y: 10 };
@@ -301,6 +317,10 @@ class GameState {
             buildingsDestroyed: 0,
             oreDelivered: 0,
         };
+    }
+
+    getPlayer(owner) {
+        return Number.isInteger(owner) ? (this.players[owner] || null) : null;
     }
 
     getPlayerStats(owner) {
@@ -623,7 +643,21 @@ class GameState {
         p.units.push(mcv);
     }
 
-    createBuilding(type, tx, ty, owner) {
+    spawnNeutralStructures() {
+        const neutralPlayer = this.getPlayer(NEUTRAL_PLAYER_INDEX);
+        if (!neutralPlayer) return;
+        const structures = this.mapProfile?.neutralStructures || [];
+        for (const structure of structures) {
+            if (!structure?.type || !this.canPlaceBuildingAt(structure.type, structure.x, structure.y)) continue;
+            const building = this.createBuilding(structure.type, structure.x, structure.y, NEUTRAL_PLAYER_INDEX, {
+                isNeutralStructure: true,
+                neutralOwner: NEUTRAL_PLAYER_INDEX,
+            });
+            neutralPlayer.buildings.push(building);
+        }
+    }
+
+    createBuilding(type, tx, ty, owner, options = {}) {
         const def = BUILD_TYPES[type];
         const building = {
             type, tx, ty, owner,
@@ -644,6 +678,8 @@ class GameState {
             training: null, trainProgress: 0, trainQueue: [],
             rallyPoint: { x: tx + def.size + 1, y: ty + Math.floor(def.size / 2) },
             oreStored: 0,
+            isNeutralStructure: !!options.isNeutralStructure,
+            neutralOwner: Number.isInteger(options.neutralOwner) ? options.neutralOwner : owner,
             garrisonCapacity: def.garrisonCapacity || 0,
             garrisonedUnits: []
         };
@@ -858,7 +894,8 @@ class GameState {
 
     canGarrisonUnit(building, unit) {
         if (!this.isGarrisonBuilding(building) || !unit || unit.tx !== undefined) return false;
-        if (building.owner !== unit.owner || !building.built || building.hp <= 0) return false;
+        const alliedOrNeutral = building.owner === unit.owner || (building.isNeutralStructure && building.owner === building.neutralOwner);
+        if (!alliedOrNeutral || !building.built || building.hp <= 0) return false;
         if (unit.state === 'dead' || unit.state === 'loaded') return false;
         if (!TRANSPORTABLE_INFANTRY_TYPES.has(unit.type)) return false;
         return (building.garrisonedUnits?.length || 0) < building.garrisonCapacity;
@@ -868,6 +905,9 @@ class GameState {
         if (!this.isGarrisonBuilding(building)) return;
         const occupants = (building.garrisonedUnits || []).filter(unit => unit.state === 'loaded' && unit.hp > 0);
         building.garrisonedUnits = occupants;
+        if (building.isNeutralStructure && occupants.length === 0 && building.owner !== building.neutralOwner) {
+            this.setBuildingOwner(building, building.neutralOwner);
+        }
         const count = occupants.length;
         if (!count) {
             building.damage = 0;
@@ -891,6 +931,17 @@ class GameState {
         building.canAttackAir = occupants.some(unit => unit.canAttackAir);
         building.projectileSpeed = 11;
         building.weaponType = occupants.some(unit => unit.canAttackAir) ? 'flak' : 'rifle';
+    }
+
+    setBuildingOwner(building, newOwner) {
+        if (!building || building.owner === newOwner) return false;
+        const oldPlayer = this.getPlayer(building.owner);
+        const newPlayer = this.getPlayer(newOwner);
+        if (!newPlayer) return false;
+        if (oldPlayer) oldPlayer.buildings = oldPlayer.buildings.filter(candidate => candidate !== building);
+        building.owner = newOwner;
+        if (!newPlayer.buildings.includes(building)) newPlayer.buildings.push(building);
+        return true;
     }
 
     getTargetArmorClass(target) {
@@ -1318,9 +1369,10 @@ class GameState {
             }
         }
 
-        const friendlyGarrison = this.players[this.currentPlayer].buildings.find(building =>
+        const friendlyGarrison = this.players.flatMap(player => player.buildings).find(building =>
             this.isGarrisonBuilding(building)
             && building.hp > 0
+            && (building.owner === this.currentPlayer || (building.isNeutralStructure && building.owner === building.neutralOwner))
             && tile.x >= building.tx
             && tile.x < building.tx + building.size
             && tile.y >= building.ty
@@ -1720,7 +1772,9 @@ class GameState {
     }
 
     garrisonUnit(building, unit) {
-        if (!this.canGarrisonUnit(building, unit)) return false;
+        if (building.isNeutralStructure && building.owner === building.neutralOwner) {
+            this.setBuildingOwner(building, unit.owner);
+        }
         building.garrisonedUnits.push(unit);
         unit.garrisonTarget = building;
         unit.transportTarget = null;
@@ -1736,9 +1790,8 @@ class GameState {
         this.refreshGarrisonBuildingStats(building);
         if (this.selected.includes(unit)) {
             this.selected = this.selected.filter(entity => entity !== unit);
-            this.updateSelectionInfo();
         }
-        this.renderer3d?.setUnitVisible(unit, false);
+        this.updateSelectionInfo();
         return true;
     }
 
@@ -1758,6 +1811,9 @@ class GameState {
             unit.pathIdx = 0;
             this.renderer3d?.setUnitVisible(unit, true);
             ejected += 1;
+        }
+        if (building.isNeutralStructure && !building.garrisonedUnits.length) {
+            this.setBuildingOwner(building, building.neutralOwner);
         }
         this.refreshGarrisonBuildingStats(building);
         return ejected;
@@ -2098,10 +2154,7 @@ class GameState {
     captureBuilding(unit, building) {
         if (!unit || !building || building.owner === unit.owner) return false;
         const previousOwner = building.owner;
-        const oldPlayer = this.players[previousOwner];
-        const newPlayer = this.players[unit.owner];
-        oldPlayer.buildings = oldPlayer.buildings.filter(b => b !== building);
-        building.owner = unit.owner;
+        this.setBuildingOwner(building, unit.owner);
         building.repairing = false;
         building.training = null;
         building.trainProgress = 0;
@@ -2113,7 +2166,6 @@ class GameState {
         if (!building.rallyPoint && this.canSetRallyPoint(building)) {
             building.rallyPoint = { x: building.tx + building.size + 1, y: building.ty + Math.floor(building.size / 2) };
         }
-        newPlayer.buildings.push(building);
         unit.captureTarget = null;
         unit.attackTarget = null;
         unit.target = null;
@@ -3952,6 +4004,7 @@ class GameState {
 
         for (let pi = 0; pi < this.players.length; pi++) {
             const p = this.players[pi];
+            if (p?.canLose === false) continue;
             const alive = this.hasLivingBase(p);
             if (!alive) {
                 this.finishMatch(pi);
