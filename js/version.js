@@ -1,1 +1,1 @@
-window.__VERSION__='0.3.41';window.__GIT_HASH__='516f3b';window.__BUILD_DATE__='2026-04-11';
+window.__VERSION__='0.3.42';window.__GIT_HASH__='477fb6';window.__BUILD_DATE__='2026-04-11';
