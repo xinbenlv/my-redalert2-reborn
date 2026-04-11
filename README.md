@@ -24,8 +24,8 @@ A browser-based RTS game inspired by Command & Conquer: Red Alert 2, built entir
 - **Economy loop**: harvesters mine ore, return to refineries, and turn cargo into credits
 - **Power system**: live power production/drain, low-power slowdown, radar offline warning
 - **Mobile support**: Touch controls (tap, long-press, pinch zoom, two-finger pan), collapsible sidebar
-- **Build system**: prerequisites, building/unit production queues, war factory vehicle tech
-- **Production controls**: repair, sell, and rally point commands on selected production buildings
+- **Build system**: prerequisites, building/unit production queues, cancellation refunds, war factory vehicle tech
+- **Production controls**: repair, sell, rally point, and cancel/refund commands on selected production buildings
 
 ## Controls
 

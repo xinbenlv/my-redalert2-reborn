@@ -789,6 +789,55 @@ class GameState {
         }
     }
 
+    cancelBuildingConstruction(building) {
+        if (!building || building.built) return;
+        const player = this.players[building.owner];
+        const totalCost = BUILD_TYPES[building.type]?.cost || 0;
+        const refund = Math.max(0, Math.floor(totalCost * (1 - building.buildProgress)));
+        player.money += refund;
+        building.hp = 0;
+        building.training = null;
+        building.trainQueue = [];
+        if (building.owner === this.currentPlayer) {
+            this.commandMode = null;
+            this.selected = [];
+            this.updateMoney();
+            this.updateUI();
+            this.eva(`${this.getDisplayName(building.type)} construction cancelled. Refund $${refund}.`);
+        }
+    }
+
+    cancelCurrentProduction(building) {
+        if (!building?.training) return;
+        const player = this.players[building.owner];
+        const type = building.training;
+        const def = UNIT_TYPES[type];
+        const progress = building.trainProgress || 0;
+        const refund = Math.max(0, Math.floor(def.cost * (1 - progress)));
+        player.money += refund;
+        building.training = null;
+        building.trainProgress = 0;
+        if (building.owner === this.currentPlayer) {
+            this.updateMoney();
+            this.updateUI();
+            this.eva(`${def.name} production cancelled. Refund $${refund}.`);
+        }
+    }
+
+    cancelQueuedProduction(building) {
+        if (!building?.trainQueue?.length) return;
+        const player = this.players[building.owner];
+        const type = building.trainQueue.pop();
+        const def = UNIT_TYPES[type];
+        const refund = def.cost;
+        player.money += refund;
+        if (building.owner === this.currentPlayer) {
+            this.updateMoney();
+            this.updateUI();
+            this.eva(`${def.name} queue cancelled. Refund $${refund}.`);
+        }
+    }
+
     spawnProducedUnit(player, building, unitType) {
         const exit = building.rallyPoint || { x: building.tx + building.size + 1, y: building.ty + Math.floor(building.size / 2) };
         const unit = this.createUnit(unitType, exit.x, exit.y, building.owner);
@@ -1931,6 +1980,12 @@ class GameState {
                 this.toggleRepairBuilding(building);
             } else if (action === 'sell') {
                 this.sellBuilding(building);
+            } else if (action === 'cancel-build') {
+                this.cancelBuildingConstruction(building);
+            } else if (action === 'cancel-current') {
+                this.cancelCurrentProduction(building);
+            } else if (action === 'cancel-queue') {
+                this.cancelQueuedProduction(building);
             } else if (action === 'rally') {
                 if (!this.canSetRallyPoint(building)) return;
                 this.commandMode = this.commandMode === 'set-rally' ? null : 'set-rally';
@@ -2080,10 +2135,19 @@ class GameState {
                     : '';
                 const repairButton = `<button class="selection-action" data-action="repair" ${(!canRepair && !s.repairing) ? 'disabled' : ''}>${s.repairing ? 'Stop Repair' : 'Repair'}</button>`;
                 const sellButton = `<button class="selection-action danger" data-action="sell">Sell</button>`;
+                const cancelBuildButton = !s.built
+                    ? `<button class="selection-action" data-action="cancel-build">Cancel Build</button>`
+                    : '';
+                const cancelCurrentButton = s.training
+                    ? `<button class="selection-action" data-action="cancel-current">Cancel Current</button>`
+                    : '';
+                const cancelQueueButton = s.trainQueue?.length
+                    ? `<button class="selection-action" data-action="cancel-queue">Cancel Queue</button>`
+                    : '';
                 info.innerHTML = `<div style="color:#ffd700">${this.getDisplayName(s.type)}</div>
                     <div>HP: ${Math.floor(s.hp)}/${s.maxHp}</div>
                     ${statusBits.map(bit => `<div>${bit}</div>`).join('')}
-                    <div class="selection-actions">${repairButton}${sellButton}${rallyButton}</div>`;
+                    <div class="selection-actions">${repairButton}${sellButton}${cancelBuildButton}${cancelCurrentButton}${cancelQueueButton}${rallyButton}</div>`;
             }
         } else {
             const units = this.selected.filter(u => u.tx === undefined);
