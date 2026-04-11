@@ -555,10 +555,13 @@ class Renderer3D {
 
             for (const u of p.units) {
                 if (u.state === 'dead') continue;
+                const screen = this.tileToScreen(u.x, u.y);
                 if (u.hp < u.maxHp || selectedSet.has(u)) {
-                    const screen = this.tileToScreen(u.x, u.y);
                     const ratio = u.hp / u.maxHp;
                     this._drawBar2D(ctx, screen.x, screen.y - 18, 24, 5, ratio);
+                }
+                if (u.veterancyRank === 'veteran' || u.veterancyRank === 'elite') {
+                    this._drawVeterancyBadge2D(ctx, screen.x, screen.y - 27, u.veterancyRank);
                 }
             }
         }
@@ -586,6 +589,20 @@ class Renderer3D {
         }
         ctx.fillStyle = color;
         ctx.fillRect(x, y, width * ratio, height);
+    }
+
+    _drawVeterancyBadge2D(ctx, cx, cy, rank) {
+        const glyph = rank === 'elite' ? '★★' : '★';
+        ctx.save();
+        ctx.font = 'bold 11px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = rank === 'elite' ? '#8bdcff' : '#ffd36b';
+        ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+        ctx.lineWidth = 3;
+        ctx.strokeText(glyph, cx, cy);
+        ctx.fillText(glyph, cx, cy);
+        ctx.restore();
     }
 
     // ==================== BUILD MENU ICON RENDERER ====================

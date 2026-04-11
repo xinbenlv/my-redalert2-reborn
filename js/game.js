@@ -39,6 +39,15 @@ const DEFAULT_MATCH_CONFIG = {
     playerFaction: 'soviet',
     aiDifficulty: 'medium',
 };
+const VETERANCY_THRESHOLDS = {
+    veteran: 80,
+    elite: 180,
+};
+const VETERANCY_BONUSES = {
+    rookie: { hp: 1, damage: 1, fireRate: 1 },
+    veteran: { hp: 1.12, damage: 1.15, fireRate: 0.9 },
+    elite: { hp: 1.28, damage: 1.3, fireRate: 0.8 },
+};
 
 function normalizeMatchConfig(config = {}) {
     const startingCredits = Number(config.startingCredits);
@@ -237,7 +246,53 @@ class GameState {
         this.getPlayerStats(owner).oreDelivered += amount;
     }
 
-    markUnitDestroyed(unit, attackerOwner = null) {
+    getVeterancyRankFromXp(xp = 0) {
+        if (xp >= VETERANCY_THRESHOLDS.elite) return 'elite';
+        if (xp >= VETERANCY_THRESHOLDS.veteran) return 'veteran';
+        return 'rookie';
+    }
+
+    getVeterancyLabel(rank = 'rookie') {
+        if (rank === 'elite') return 'Elite';
+        if (rank === 'veteran') return 'Veteran';
+        return 'Rookie';
+    }
+
+    isCombatUnit(unit) {
+        return !!unit && unit.tx === undefined && unit.damage > 0 && unit.range > 0;
+    }
+
+    applyVeterancyBonuses(unit, rank = 'rookie', options = {}) {
+        if (!unit?.baseMaxHp) return;
+        const { healOnPromotion = false } = options;
+        const previousMaxHp = unit.maxHp || unit.baseMaxHp;
+        const bonus = VETERANCY_BONUSES[rank] || VETERANCY_BONUSES.rookie;
+        unit.veterancyRank = rank;
+        unit.maxHp = Math.round(unit.baseMaxHp * bonus.hp);
+        unit.damage = Math.max(0, Math.round(unit.baseDamage * bonus.damage));
+        unit.fireRate = unit.baseFireRate > 0 ? Math.max(250, Math.round(unit.baseFireRate * bonus.fireRate)) : 0;
+        if (healOnPromotion) {
+            const gainedHp = Math.max(0, unit.maxHp - previousMaxHp);
+            unit.hp = Math.min(unit.maxHp, unit.hp + gainedHp + unit.maxHp * 0.15);
+        } else if (unit.hp > unit.maxHp) {
+            unit.hp = unit.maxHp;
+        }
+    }
+
+    grantVeterancy(unit, amount) {
+        if (!this.isCombatUnit(unit) || !amount || amount <= 0 || unit.state === 'dead') return;
+        unit.veterancyXp = (unit.veterancyXp || 0) + amount;
+        const nextRank = this.getVeterancyRankFromXp(unit.veterancyXp);
+        if (nextRank !== unit.veterancyRank) {
+            this.applyVeterancyBonuses(unit, nextRank, { healOnPromotion: true });
+            if (unit.owner === this.currentPlayer) {
+                this.eva(`${this.getDisplayName(unit.type)} promoted to ${this.getVeterancyLabel(nextRank)}.`);
+            }
+            if (this.selected.includes(unit)) this.updateSelectionInfo();
+        }
+    }
+
+    markUnitDestroyed(unit, attackerOwner = null, attackerUnit = null) {
         if (!unit || unit._lossRecorded) return;
         unit._lossRecorded = true;
         unit.state = 'dead';
@@ -245,16 +300,22 @@ class GameState {
         if (Number.isInteger(attackerOwner) && attackerOwner !== unit.owner) {
             this.getPlayerStats(attackerOwner).unitsKilled += 1;
         }
+        if (attackerUnit && attackerUnit.owner !== unit.owner) {
+            this.grantVeterancy(attackerUnit, 35);
+        }
     }
 
     markBuildingDestroyed(building, attackerOwner = null, options = {}) {
         if (!building || building._lossRecorded) return;
-        const { countAsLoss = true } = options;
+        const { countAsLoss = true, attackerUnit = null } = options;
         building._lossRecorded = true;
         if (countAsLoss) {
             this.getPlayerStats(building.owner).buildingsLost += 1;
             if (Number.isInteger(attackerOwner) && attackerOwner !== building.owner) {
                 this.getPlayerStats(attackerOwner).buildingsDestroyed += 1;
+            }
+            if (attackerUnit && attackerUnit.owner !== building.owner) {
+                this.grantVeterancy(attackerUnit, 60);
             }
         }
     }
@@ -501,10 +562,14 @@ class GameState {
             type, owner,
             x: tx, y: ty,
             hp: def.hp, maxHp: def.hp,
+            baseMaxHp: def.hp,
             speed: def.speed,
+            baseSpeed: def.speed,
             damage: def.damage,
+            baseDamage: def.damage,
             range: def.range,
             fireRate: def.fireRate,
+            baseFireRate: def.fireRate,
             sight: def.sight,
             role: def.role,
             armorType: def.armorType,
@@ -534,7 +599,9 @@ class GameState {
             canDeploy: !!def.canDeploy,
             deploysTo: def.deploysTo || null,
             isStartingMCV: false,
-            autoDeployAt: null
+            autoDeployAt: null,
+            veterancyXp: 0,
+            veterancyRank: 'rookie'
         };
     }
 
@@ -1821,7 +1888,10 @@ class GameState {
                 }
 
                 if (b.hp <= 0) {
-                    this.markBuildingDestroyed(b, b._lastAttackerOwner ?? null, { countAsLoss: !b._removedByOwner });
+                    this.markBuildingDestroyed(b, b._lastAttackerOwner ?? null, {
+                        countAsLoss: !b._removedByOwner,
+                        attackerUnit: b._lastAttackerUnit || null,
+                    });
                     this.effects.push({ type: 'explosion', x: b.tx + b.size / 2, y: b.ty + b.size / 2, frame: 0, timer: 0, big: true });
                     this.renderer3d.removeBuilding(b);
                 }
@@ -2127,6 +2197,7 @@ class GameState {
             damageProfile: u.damageProfile || null,
             weaponType: u.weaponType || 'rifle',
             owner: u.owner,
+            attacker: u,
             target
         });
     }
@@ -2152,10 +2223,12 @@ class GameState {
                             const directDamage = this.getDamageAgainstTarget(p.damage, p.damageProfile, eu);
                             const dmg = (eu === p.target) ? directDamage : Math.max(1, Math.floor(directDamage * 0.5));
                             eu.hp -= dmg;
+                            if (p.attacker && p.attacker.owner !== eu.owner) this.grantVeterancy(p.attacker, dmg);
                             // Record who attacked this unit (for retaliation)
                             eu._lastAttackerOwner = p.owner;
+                            eu._lastAttackerUnit = p.attacker || null;
                             eu._lastHitTime = Date.now();
-                            if (eu.hp <= 0) this.markUnitDestroyed(eu, p.owner);
+                            if (eu.hp <= 0) this.markUnitDestroyed(eu, p.owner, p.attacker || null);
                         }
                     }
                     for (const eb of this.players[pi2].buildings) {
@@ -2166,7 +2239,9 @@ class GameState {
                             const directDamage = this.getDamageAgainstTarget(p.damage, p.damageProfile, eb);
                             const dmg = (eb === p.target) ? directDamage : Math.max(1, Math.floor(directDamage * 0.5));
                             eb.hp -= dmg;
+                            if (p.attacker && p.attacker.owner !== eb.owner) this.grantVeterancy(p.attacker, dmg);
                             eb._lastAttackerOwner = p.owner;
+                            eb._lastAttackerUnit = p.attacker || null;
                         }
                     }
                 }
@@ -3073,6 +3148,7 @@ class GameState {
             const s = this.selected[0];
             if (s.tx === undefined) {
                 const extras = [];
+                const veterancyBits = [];
                 if (s.role === 'harvester') extras.push(`ORE: ${Math.floor(s.cargo)}/${s.cargoCapacity}`);
                 else if (s.type === 'mcv') {
                     extras.push(this.canDeployMCV(s) ? 'DEPLOY READY' : 'DEPLOY BLOCKED');
@@ -3083,12 +3159,17 @@ class GameState {
                         extras.push(`TARGET: ${this.getDisplayName(s.captureTarget.type)}`);
                     }
                 } else extras.push(`DMG: ${s.damage} | RNG: ${s.range}`);
+                if (this.isCombatUnit(s)) {
+                    veterancyBits.push(`RANK: ${this.getVeterancyLabel(s.veterancyRank)}`);
+                    veterancyBits.push(`XP: ${Math.floor(s.veterancyXp || 0)}/${VETERANCY_THRESHOLDS.elite}`);
+                }
                 const deployButton = s.type === 'mcv'
                     ? `<button class="selection-action" data-action="deploy" ${this.canDeployMCV(s) ? '' : 'disabled'}>Deploy MCV</button>`
                     : '';
                 info.innerHTML = `<div style="color:#00ff88">${this.getDisplayName(s.type)}</div>
                     <div>HP: ${Math.floor(s.hp)}/${s.maxHp}</div>
                     <div>${extras.join(' | ')}</div>
+                    ${veterancyBits.length ? `<div style="color:#ffd36b">${veterancyBits.join(' | ')}</div>` : ''}
                     <div style="color:#666;font-size:9px">${s.state}</div>
                     ${deployButton ? `<div class="selection-actions">${deployButton}</div>` : ''}`;
             } else {
@@ -3131,8 +3212,11 @@ class GameState {
             const units = this.selected.filter(u => u.tx === undefined);
             const harvesters = units.filter(u => u.role === 'harvester').length;
             const fighters = units.length - harvesters;
+            const veterans = units.filter(u => u.veterancyRank === 'veteran').length;
+            const elites = units.filter(u => u.veterancyRank === 'elite').length;
             info.innerHTML = `<div style="color:#00ff88">${units.length} units selected</div>
                 <div>${fighters} combat | ${harvesters} harvesters</div>
+                <div style="color:#ffd36b">${veterans} veteran | ${elites} elite</div>
                 <div style="color:#666;font-size:9px">Right-click commands apply to combat units only</div>`;
         }
     }

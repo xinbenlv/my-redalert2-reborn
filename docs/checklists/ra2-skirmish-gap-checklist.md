@@ -179,8 +179,8 @@
 - [ ] 运输载具装载 / 卸载
 
 ## B9. veterancy / crate / map pickups
-- [ ] Veterancy（rookie / veteran / elite）
-- [ ] veterancy 带来的属性 / 开火变化
+- [x] Veterancy（rookie / veteran / elite）
+- [x] veterancy 带来的属性 / 开火变化
 - [ ] 地图随机 crates
 - [ ] crate 奖励（钱、修理、升级、爆炸等）
 - [ ] 中立 tech building capture
@@ -276,7 +276,7 @@
 ### C2. P1：把“中局节奏”补出来
 - [x] Battle Lab
 - [~] 更多载具与反制链（已补 V3 Artillery，仍缺 APC / 防空载具等）
-- [ ] veterancy
+- [x] veterancy
 - [ ] air units
 - [x] more maps
 - [ ] walls / bridges / garrison
