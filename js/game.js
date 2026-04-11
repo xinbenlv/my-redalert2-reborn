@@ -1522,6 +1522,28 @@ class GameState {
         return (building.training ? 1 : 0) + (building.trainQueue?.length || 0);
     }
 
+    getUnitCount(player, unitType, { includeQueued = false } = {}) {
+        if (!player || !unitType) return 0;
+        const liveUnits = player.units.filter(u => u.state !== 'dead' && u.type === unitType).length;
+        return includeQueued ? liveUnits + this._getTotalTrainQueue(player, unitType) : liveUnits;
+    }
+
+    getAirThreatPressure(player) {
+        if (!player) return 0;
+        const activeAircraft = player.units.filter(u => u.state !== 'dead' && this.isAirUnit(u)).length;
+        const airfields = player.buildings.filter(b => b.type === 'airfield' && b.built && b.hp > 0).length;
+        const queuedHarriers = this._getTotalTrainQueue(player, 'harrier');
+        return activeAircraft + queuedHarriers + Math.min(2, airfields);
+    }
+
+    getAntiAirCoverageScore(player) {
+        if (!player) return 0;
+        const ifvCount = this.getUnitCount(player, 'ifv', { includeQueued: true });
+        const flakTrackCount = this.getUnitCount(player, 'flakTrack', { includeQueued: true });
+        const flakTrooperCount = this.getUnitCount(player, 'flakTrooper', { includeQueued: true });
+        return (ifvCount * 2) + (flakTrackCount * 2) + flakTrooperCount;
+    }
+
     getPrimarySelectedBuilding() {
         return this.selected.length === 1 && this.selected[0]?.tx !== undefined ? this.selected[0] : null;
     }
@@ -3072,6 +3094,7 @@ class GameState {
         const enemyPlayer = this.players[0];
         const enemyHeavyUnits = enemyPlayer.units.filter(u => u.state !== 'dead' && u.armorType === 'heavy').length;
         const enemyAirUnits = enemyPlayer.units.filter(u => u.state !== 'dead' && this.isAirUnit(u)).length;
+        const enemyAirPressure = this.getAirThreatPressure(enemyPlayer);
         const enemyBuildings = enemyPlayer.buildings.filter(b => b.built && b.hp > 0).length;
         const enemyDefenses = enemyPlayer.buildings.filter(b => b.built && b.hp > 0 && this.isDefensiveBuilding(b)).length;
         const enemyInfantryUnits = enemyPlayer.units.filter(u => u.state !== 'dead' && u.role !== 'harvester' && u.armorType !== 'heavy').length;
@@ -3093,8 +3116,15 @@ class GameState {
             return;
         }
 
-        const aiIfvCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'ifv').length + this._getTotalTrainQueue(ai, 'ifv');
-        if (ifvFactories.length > 0 && ai.money >= UNIT_TYPES.ifv.cost && enemyAirUnits >= 1 && aiIfvCount < Math.max(1, enemyAirUnits)) {
+        const aiIfvCount = this.getUnitCount(ai, 'ifv', { includeQueued: true });
+        const aiFlakTrackCount = this.getUnitCount(ai, 'flakTrack', { includeQueued: true });
+        const aiFlakCount = this.getUnitCount(ai, 'flakTrooper', { includeQueued: true });
+        const antiAirCoverageScore = this.getAntiAirCoverageScore(ai);
+        const antiAirEmergency = enemyAirPressure >= 2 && antiAirCoverageScore < (enemyAirPressure * 2);
+        const desiredIfvCount = enemyAirPressure >= 4 ? 2 : (enemyAirPressure >= 2 ? 1 : 0);
+        const desiredFlakTrackCount = enemyAirPressure >= 5 ? 2 : (enemyAirPressure >= 3 ? 1 : 0);
+        const desiredFlakTrooperCount = enemyAirPressure >= 2 ? Math.max(2, enemyAirPressure) : 0;
+        if (ifvFactories.length > 0 && ai.money >= UNIT_TYPES.ifv.cost && ((enemyAirUnits >= 1 && aiIfvCount < Math.max(1, enemyAirUnits)) || (antiAirEmergency && aiIfvCount < desiredIfvCount))) {
             const wf = ifvFactories.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
             ai.money -= UNIT_TYPES.ifv.cost;
             if (!wf.training) wf.training = 'ifv';
@@ -3102,8 +3132,7 @@ class GameState {
             return;
         }
 
-        const aiFlakTrackCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'flakTrack').length + this._getTotalTrainQueue(ai, 'flakTrack');
-        if (flakTrackFactories.length > 0 && ai.money >= UNIT_TYPES.flakTrack.cost && enemyInfantryUnits >= 4 && aiFlakTrackCount < Math.max(1, Math.ceil(enemyInfantryUnits / 4))) {
+        if (flakTrackFactories.length > 0 && ai.money >= UNIT_TYPES.flakTrack.cost && ((enemyInfantryUnits >= 4 && aiFlakTrackCount < Math.max(1, Math.ceil(enemyInfantryUnits / 4))) || (antiAirEmergency && aiFlakTrackCount < desiredFlakTrackCount))) {
             const wf = flakTrackFactories.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
             ai.money -= UNIT_TYPES.flakTrack.cost;
             if (!wf.training) wf.training = 'flakTrack';
@@ -3120,9 +3149,17 @@ class GameState {
             return;
         }
 
+        if ((antiAirEmergency || enemyAirPressure >= 2) && barracks.length > 0 && aiFlakCount < desiredFlakTrooperCount && ai.money >= UNIT_TYPES.flakTrooper.cost) {
+            const bb = barracks.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
+            ai.money -= UNIT_TYPES.flakTrooper.cost;
+            if (!bb.training) bb.training = 'flakTrooper';
+            else bb.trainQueue.push('flakTrooper');
+            return;
+        }
+
         const aiHarrierCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'harrier').length + this._getTotalTrainQueue(ai, 'harrier');
         const enemyEcoTargets = enemyPlayer.units.filter(u => u.state !== 'dead' && u.type === 'harvester').length + enemyPlayer.buildings.filter(b => b.built && b.hp > 0 && (b.type === 'refinery' || b.type === 'powerPlant')).length;
-        const shouldPrioritizeHarriers = airfields.length > 0 && ai.money >= UNIT_TYPES.harrier.cost && (enemyDefenses >= 1 || enemyEcoTargets >= 2 || enemyBuildings >= 5) && aiHarrierCount < 2;
+        const shouldPrioritizeHarriers = !antiAirEmergency && airfields.length > 0 && ai.money >= UNIT_TYPES.harrier.cost && (enemyDefenses >= 1 || enemyEcoTargets >= 2 || enemyBuildings >= 5) && aiHarrierCount < 2;
         if (shouldPrioritizeHarriers) {
             const airfield = airfields.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
             ai.money -= UNIT_TYPES.harrier.cost;
@@ -3148,13 +3185,14 @@ class GameState {
         }
 
         const aiRocketCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'rocketInfantry').length + this._getTotalTrainQueue(ai, 'rocketInfantry');
-        const aiFlakCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'flakTrooper').length + this._getTotalTrainQueue(ai, 'flakTrooper');
         const aiSoldierCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'soldier').length + this._getTotalTrainQueue(ai, 'soldier');
 
         if (barracks.length > 0) {
             const bb = barracks.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
             let infantryChoice = 'soldier';
-            if (enemyHeavyUnits > aiRocketCount && ai.money >= UNIT_TYPES.rocketInfantry.cost) {
+            if ((antiAirEmergency || enemyAirPressure >= 2) && aiFlakCount < desiredFlakTrooperCount && ai.money >= UNIT_TYPES.flakTrooper.cost) {
+                infantryChoice = 'flakTrooper';
+            } else if (enemyHeavyUnits > aiRocketCount && ai.money >= UNIT_TYPES.rocketInfantry.cost) {
                 infantryChoice = 'rocketInfantry';
             } else if (enemyInfantryUnits > aiFlakCount + 1 && ai.money >= UNIT_TYPES.flakTrooper.cost) {
                 infantryChoice = 'flakTrooper';
