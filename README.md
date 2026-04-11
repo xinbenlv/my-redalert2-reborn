@@ -25,6 +25,7 @@ A browser-based RTS game inspired by Command & Conquer: Red Alert 2, built entir
 - **Power system**: live power production/drain, low-power slowdown, radar offline warning
 - **Mobile support**: Touch controls (tap, long-press, pinch zoom, two-finger pan), collapsible sidebar
 - **Build system**: prerequisites, building/unit production queues, war factory vehicle tech
+- **Production controls**: repair, sell, and rally point commands on selected production buildings
 
 ## Controls
 
@@ -33,7 +34,7 @@ A browser-based RTS game inspired by Command & Conquer: Red Alert 2, built entir
 |-------|--------|
 | Left click | Select unit/building |
 | Drag | Box select multiple units |
-| Right click | Move / Attack command |
+| Right click | Move / Attack command / place rally point when rally mode is active |
 | WASD / Arrows | Pan camera |
 | Escape | Deselect / Cancel placement |
 | Ctrl+1-9 | Assign control group |

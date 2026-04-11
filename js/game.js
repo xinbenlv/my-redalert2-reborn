@@ -59,6 +59,7 @@ class GameState {
         this.selected = [];
         this.selBox = null;
         this.placingBuilding = null;
+        this.commandMode = null;
         this.hoverTile = { x: 0, y: 0 };
 
         // Build queue
@@ -269,6 +270,7 @@ class GameState {
             }
             if (e.key === 'Escape') {
                 this.placingBuilding = null;
+                this.commandMode = null;
                 this.selected = [];
                 this.updateSelectionInfo();
             }
@@ -563,7 +565,22 @@ class GameState {
     onRightClick(e) {
         if (this.selected.length === 0) return;
         const tile = this.renderer3d.screenToTile(e.clientX, e.clientY);
-        console.log('[RightClick] tile:', tile, 'selected:', this.selected.length, 'gameOver:', this.gameOver);
+        console.log('[RightClick] tile:', tile, 'selected:', this.selected.length, 'gameOver:', this.gameOver, 'mode:', this.commandMode);
+
+        if (this.commandMode === 'set-rally') {
+            const building = this.getPrimarySelectedBuilding();
+            if (!building || !this.canSetRallyPoint(building)) {
+                this.commandMode = null;
+                this.updateSelectionInfo();
+                return;
+            }
+            building.rallyPoint = { x: tile.x, y: tile.y };
+            this.commandMode = null;
+            this.eva(`${this.getDisplayName(building.type)} rally point updated.`);
+            this.commandPings.push({ tx: tile.x, ty: tile.y, color: '#00aaff', time: 0 });
+            this.updateSelectionInfo();
+            return;
+        }
 
         // Check if right-clicked on an enemy unit
         const enemyUnit = this._findEnemyUnitAt(tile.x, tile.y);
@@ -723,6 +740,53 @@ class GameState {
 
     getQueueLength(building) {
         return (building.training ? 1 : 0) + (building.trainQueue?.length || 0);
+    }
+
+    getPrimarySelectedBuilding() {
+        return this.selected.length === 1 && this.selected[0]?.tx !== undefined ? this.selected[0] : null;
+    }
+
+    canSetRallyPoint(building) {
+        return !!(building && BUILD_TYPES[building.type]?.production && building.built && building.hp > 0);
+    }
+
+    canRepairBuilding(player, building) {
+        if (!building || building.tx === undefined || !building.built || building.hp <= 0) return false;
+        if (building.hp >= building.maxHp) return false;
+        return player.money > 0;
+    }
+
+    toggleRepairBuilding(building) {
+        const player = this.players[building.owner];
+        if (!this.canRepairBuilding(player, building) && !building.repairing) {
+            this.eva('Cannot repair right now.');
+            return;
+        }
+        building.repairing = !building.repairing;
+        if (building.repairing) {
+            building.sellPending = false;
+            this.eva(`${this.getDisplayName(building.type)} repair started.`);
+        } else {
+            this.eva(`${this.getDisplayName(building.type)} repair stopped.`);
+        }
+        this.updateSelectionInfo();
+    }
+
+    sellBuilding(building) {
+        const player = this.players[building.owner];
+        const refund = Math.max(100, Math.floor((BUILD_TYPES[building.type]?.cost || 0) * 0.5 * Math.max(0.3, building.hp / building.maxHp)));
+        player.money += refund;
+        building.hp = 0;
+        building.repairing = false;
+        building.training = null;
+        building.trainQueue = [];
+        if (building.owner === this.currentPlayer) {
+            this.commandMode = null;
+            this.selected = [];
+            this.updateMoney();
+            this.updateUI();
+            this.eva(`${this.getDisplayName(building.type)} sold for $${refund}.`);
+        }
     }
 
     spawnProducedUnit(player, building, unitType) {
@@ -1037,6 +1101,22 @@ class GameState {
                 }
 
                 const def = BUILD_TYPES[b.type];
+                if (b.repairing && b.built && b.hp > 0 && b.hp < b.maxHp) {
+                    const repairCost = dt * 0.02;
+                    const repairAmount = dt * 0.03;
+                    if (p.money >= repairCost) {
+                        p.money -= repairCost;
+                        b.hp = Math.min(b.maxHp, b.hp + repairAmount);
+                    } else {
+                        b.repairing = false;
+                        if (b.owner === this.currentPlayer) this.eva('Repair paused: insufficient funds.');
+                    }
+                    if (b.hp >= b.maxHp) {
+                        b.repairing = false;
+                        if (b.owner === this.currentPlayer) this.eva(`${this.getDisplayName(b.type)} fully repaired.`);
+                    }
+                }
+
                 if (def.production && b.built && b.hp > 0) {
                     if (!b.training && b.trainQueue.length > 0) {
                         b.training = b.trainQueue.shift();
@@ -1840,6 +1920,24 @@ class GameState {
                 this.updateUI();
             });
         });
+
+        document.getElementById('selection-info').addEventListener('click', e => {
+            const action = e.target?.dataset?.action;
+            if (!action) return;
+            const building = this.getPrimarySelectedBuilding();
+            if (!building) return;
+
+            if (action === 'repair') {
+                this.toggleRepairBuilding(building);
+            } else if (action === 'sell') {
+                this.sellBuilding(building);
+            } else if (action === 'rally') {
+                if (!this.canSetRallyPoint(building)) return;
+                this.commandMode = this.commandMode === 'set-rally' ? null : 'set-rally';
+                this.eva(this.commandMode ? 'Right-click to place rally point.' : 'Rally placement cancelled.');
+                this.updateSelectionInfo();
+            }
+        });
     }
 
     updateUI() {
@@ -1968,15 +2066,24 @@ class GameState {
                     <div>${extras.join(' ')}</div>
                     <div style="color:#666;font-size:9px">${s.state}</div>`;
             } else {
+                const def = BUILD_TYPES[s.type];
                 const statusBits = [];
                 if (s.training) statusBits.push(`Producing: ${this.getDisplayName(s.training)} ${Math.floor(s.trainProgress * 100)}%`);
                 if (!s.built) statusBits.push(`Building: ${Math.floor(s.buildProgress * 100)}%`);
-                const def = BUILD_TYPES[s.type];
                 if (def.powerSupply) statusBits.push(`Power +${def.powerSupply}`);
                 if (def.powerDrain) statusBits.push(`Drain ${def.powerDrain}`);
+                if (s.repairing) statusBits.push('Repairing');
+                if (s.rallyPoint && this.canSetRallyPoint(s)) statusBits.push(`Rally: ${Math.round(s.rallyPoint.x)}, ${Math.round(s.rallyPoint.y)}`);
+                const canRepair = this.canRepairBuilding(this.players[s.owner], s);
+                const rallyButton = this.canSetRallyPoint(s)
+                    ? `<button class="selection-action ${this.commandMode === 'set-rally' ? 'active' : ''}" data-action="rally">${this.commandMode === 'set-rally' ? 'Placing Rally' : 'Set Rally'}</button>`
+                    : '';
+                const repairButton = `<button class="selection-action" data-action="repair" ${(!canRepair && !s.repairing) ? 'disabled' : ''}>${s.repairing ? 'Stop Repair' : 'Repair'}</button>`;
+                const sellButton = `<button class="selection-action danger" data-action="sell">Sell</button>`;
                 info.innerHTML = `<div style="color:#ffd700">${this.getDisplayName(s.type)}</div>
                     <div>HP: ${Math.floor(s.hp)}/${s.maxHp}</div>
-                    ${statusBits.map(bit => `<div>${bit}</div>`).join('')}`;
+                    ${statusBits.map(bit => `<div>${bit}</div>`).join('')}
+                    <div class="selection-actions">${repairButton}${sellButton}${rallyButton}</div>`;
             }
         } else {
             const units = this.selected.filter(u => u.tx === undefined);
