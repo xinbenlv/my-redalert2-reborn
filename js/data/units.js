@@ -147,6 +147,29 @@ window.UNIT_TYPES = {
         producedBy: 'warFactory',
         prerequisites: ['warFactory']
     },
+    flakTrack: {
+        name: 'Flak Track',
+        cost: 1000,
+        trainTime: 7200,
+        hp: 190,
+        speed: 0.98,
+        damage: 22,
+        range: 5.8,
+        fireRate: 700,
+        sight: 7,
+        armorType: 'light',
+        role: 'anti-air vehicle',
+        projectileSpeed: 10.5,
+        weaponType: 'flak',
+        damageProfile: {
+            infantry: 1.45,
+            light: 1.2,
+            heavy: 0.7,
+            building: 0.55
+        },
+        producedBy: 'warFactory',
+        prerequisites: ['warFactory', 'radarDome']
+    },
     artillery: {
         name: 'V3 Artillery',
         cost: 1200,

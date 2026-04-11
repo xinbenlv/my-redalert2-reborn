@@ -1232,6 +1232,86 @@ class ModelFactory {
         return group;
     }
 
+    createFlakTrack(factionColor) {
+        const fc = this._factionColor(factionColor);
+        const group = new THREE.Group();
+        const hullMat = this._mat(0x5f6670, { roughness: 0.58, metalness: 0.34 });
+        const accentMat = this._mat(fc, { roughness: 0.42, metalness: 0.4, emissive: fc, emissiveIntensity: 0.08 });
+
+        const lowerHull = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.18, 1.08), hullMat);
+        lowerHull.position.y = 0.16;
+        lowerHull.castShadow = true;
+        group.add(lowerHull);
+
+        const cab = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.24, 0.34), this._mat(0x8e979f, { roughness: 0.44, metalness: 0.28 }));
+        cab.position.set(0, 0.34, -0.16);
+        cab.castShadow = true;
+        group.add(cab);
+
+        const bed = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.12, 0.5), this._mat(0x4a525b, { roughness: 0.48, metalness: 0.32 }));
+        bed.position.set(0, 0.29, 0.18);
+        bed.castShadow = true;
+        group.add(bed);
+
+        const turret = new THREE.Group();
+        turret.position.set(0, 0.44, 0.16);
+        group.add(turret);
+        group.userData.turret = turret;
+
+        const turretBase = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 0.14, 10), accentMat);
+        turretBase.castShadow = true;
+        turret.add(turretBase);
+
+        const shield = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.16, 0.08), this._mat(0x69727c, { roughness: 0.5, metalness: 0.4 }));
+        shield.position.set(0, 0.08, 0.12);
+        shield.castShadow = true;
+        turret.add(shield);
+
+        for (const x of [-0.12, 0, 0.12]) {
+            const barrel = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.028, 0.034, 0.72, 8),
+                this._mat(0x2f343b, { roughness: 0.36, metalness: 0.64 })
+            );
+            barrel.rotation.x = Math.PI / 2;
+            barrel.position.set(x, 0.04, 0.38);
+            barrel.castShadow = true;
+            turret.add(barrel);
+        }
+
+        const ammoBox = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.18, 0.18), this._mat(0x7f8891, { roughness: 0.45, metalness: 0.36 }));
+        ammoBox.position.set(-0.18, 0.04, -0.04);
+        ammoBox.castShadow = true;
+        turret.add(ammoBox);
+
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.06, 0.08), accentMat);
+        stripe.position.set(0, 0.27, -0.42);
+        group.add(stripe);
+
+        for (const x of [-0.34, 0.34]) {
+            const wheelWell = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.94), this._mat(0x23272d, { roughness: 0.82 }));
+            wheelWell.position.set(x, 0.08, 0.02);
+            group.add(wheelWell);
+        }
+
+        for (const x of [-0.34, 0.34]) {
+            for (const z of [-0.34, 0.34]) {
+                const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.08, 12), this._mat(0x17191d, { roughness: 0.9 }));
+                wheel.rotation.z = Math.PI / 2;
+                wheel.position.set(x, 0.11, z);
+                group.add(wheel);
+            }
+        }
+
+        const muzzleFlash = new THREE.PointLight(0xffcc55, 0, 2.4);
+        muzzleFlash.position.set(0, 0.5, 0.92);
+        group.add(muzzleFlash);
+        group.userData.muzzleFlash = muzzleFlash;
+
+        group.userData.modelType = 'flakTrack';
+        group.userData.factionColor = fc;
+        return group;
+    }
+
     createApocalypseTank(factionColor) {
         const fc = this._factionColor(factionColor);
         const group = new THREE.Group();

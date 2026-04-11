@@ -2361,6 +2361,7 @@ class GameState {
             else if (type === 'radarDome') score += 45;
             else if (type === 'barracks') score += 35;
             else if (type === 'apocalypseTank') score += 55;
+            else if (type === 'flakTrack') score += 34;
             else if (type === 'tank') score += 30;
             else if (role === 'harvester') score += 120;
             else if (role === 'engineer') score += 40;
@@ -2501,6 +2502,7 @@ class GameState {
         const warFactories = this.getProductionBuildings(ai, 'harvester');
         const barracks = this.getProductionBuildings(ai, 'soldier');
         const tankFactories = this.getProductionBuildings(ai, 'tank');
+        const flakTrackFactories = this.getProductionBuildings(ai, 'flakTrack');
         const artilleryFactories = this.getProductionBuildings(ai, 'artillery');
         const apocalypseFactories = this.getProductionBuildings(ai, 'apocalypseTank');
         const enemyPlayer = this.players[0];
@@ -2514,6 +2516,15 @@ class GameState {
             ai.money -= UNIT_TYPES.harvester.cost;
             if (!wf.training) wf.training = 'harvester';
             else wf.trainQueue.push('harvester');
+            return;
+        }
+
+        const aiFlakTrackCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'flakTrack').length + this._getTotalTrainQueue(ai, 'flakTrack');
+        if (flakTrackFactories.length > 0 && ai.money >= UNIT_TYPES.flakTrack.cost && enemyInfantryUnits >= 4 && aiFlakTrackCount < Math.max(1, Math.ceil(enemyInfantryUnits / 4))) {
+            const wf = flakTrackFactories.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
+            ai.money -= UNIT_TYPES.flakTrack.cost;
+            if (!wf.training) wf.training = 'flakTrack';
+            else wf.trainQueue.push('flakTrack');
             return;
         }
 
@@ -3040,7 +3051,7 @@ class GameState {
                 this.addBuildItem(container, type, def.name, def.cost, def.description, false);
             });
         } else {
-            ['soldier', 'rocketInfantry', 'flakTrooper', 'engineer', 'harvester', 'tank', 'artillery', 'apocalypseTank', 'mcv'].forEach(type => {
+            ['soldier', 'rocketInfantry', 'flakTrooper', 'engineer', 'harvester', 'tank', 'flakTrack', 'artillery', 'apocalypseTank', 'mcv'].forEach(type => {
                 const def = UNIT_TYPES[type];
                 const description = type === 'engineer' ? 'Captures enemy buildings on contact.' : def.role;
                 this.addBuildItem(container, type, def.name, def.cost, description, true);

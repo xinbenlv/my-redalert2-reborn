@@ -108,7 +108,7 @@
 - [x] Harvester
 - [x] Rhino Tank
 - [ ] APC / IFV
-- [ ] Anti-air vehicle
+- [x] Anti-air vehicle
 - [x] Artillery / V3 / Siege 类远程单位
 - [ ] Terror Drone / Mirage / Prism Tank / Apocalypse / Kirov 等特色载具
 - [x] MCV
@@ -223,7 +223,7 @@
 - [ ] 多 build order
 - [ ] 阵营差异化 AI
 - [x] 护矿 / 骚扰矿车
-- [ ] 防空意识
+- [~] 防空意识（已补 Flak Track 反步兵/轻甲反制与 AI 出车逻辑，真正对空优先级仍待 air units 落地）
 - [ ] 修建筑 / 卖残血建筑等经济决策
 - [ ] 科技攀升
 - [ ] 防御建筑布局
@@ -275,7 +275,7 @@
 
 ### C2. P1：把“中局节奏”补出来
 - [x] Battle Lab
-- [~] 更多载具与反制链（已补 V3 Artillery，仍缺 APC / 防空载具等）
+- [~] 更多载具与反制链（已补 V3 Artillery + Flak Track，仍缺 APC / 更完整的空地反制链）
 - [x] veterancy
 - [ ] air units
 - [x] more maps
