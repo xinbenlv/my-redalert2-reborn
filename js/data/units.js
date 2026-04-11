@@ -70,6 +70,23 @@ window.UNIT_TYPES = {
         producedBy: 'barracks',
         prerequisites: ['barracks', 'powerPlant']
     },
+    engineer: {
+        name: 'Engineer',
+        cost: 500,
+        trainTime: 5500,
+        hp: 55,
+        speed: 1.08,
+        damage: 0,
+        range: 0,
+        fireRate: 0,
+        sight: 6,
+        armorType: 'light',
+        role: 'engineer',
+        captureRange: 1.15,
+        captureStrength: 1,
+        producedBy: 'barracks',
+        prerequisites: ['barracks', 'refinery']
+    },
     harvester: {
         name: 'Harvester',
         cost: 1400,

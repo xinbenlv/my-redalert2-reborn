@@ -268,7 +268,7 @@ class Renderer3D {
         if (this.unitMeshes.has(unit)) return;
 
         let mesh;
-        if (unit.type === 'soldier' || unit.type === 'rocketInfantry' || unit.type === 'flakTrooper') mesh = this.models.createSoldier(factionColor);
+        if (unit.type === 'soldier' || unit.type === 'rocketInfantry' || unit.type === 'flakTrooper' || unit.type === 'engineer') mesh = this.models.createSoldier(factionColor);
         else if (unit.type === 'harvester') mesh = this.models.createHarvester(factionColor);
         else if (unit.type === 'tank') mesh = this.models.createTank(factionColor);
         if (!mesh) return;
@@ -319,15 +319,15 @@ class Renderer3D {
                 }
             });
             this.models.flashMuzzle(mesh, false);
-        } else if (unit.type === 'soldier' || unit.type === 'rocketInfantry' || unit.type === 'flakTrooper') {
+        } else if (unit.type === 'soldier' || unit.type === 'rocketInfantry' || unit.type === 'flakTrooper' || unit.type === 'engineer') {
             mesh.rotation.x = 0;
-            if (unit.state === 'moving') {
+            if (unit.state === 'moving' || unit.state === 'capturing') {
                 unit._walkPhase = (unit._walkPhase || 0) + dt * 0.008;
                 this.models.animateSoldierWalk(mesh, unit._walkPhase);
                 this.models.flashMuzzle(mesh, false);
             } else if (unit.state === 'attacking' || unit.state === 'engaging') {
                 this.models.animateSoldierAttack(mesh);
-                const flashing = unit.fireTimer > unit.fireRate - 100;
+                const flashing = unit.fireRate > 0 && unit.fireTimer > unit.fireRate - 100;
                 this.models.flashMuzzle(mesh, flashing);
             } else {
                 this.models.animateSoldierIdle(mesh);
@@ -620,7 +620,7 @@ class Renderer3D {
         else if (type === 'powerPlant') model = this.models.createPowerPlant(factionColor);
         else if (type === 'radarDome') model = this.models.createRadarDome(factionColor);
         else if (type === 'warFactory') model = this.models.createWarFactory(factionColor);
-        else if (type === 'soldier' || type === 'rocketInfantry' || type === 'flakTrooper') {
+        else if (type === 'soldier' || type === 'rocketInfantry' || type === 'flakTrooper' || type === 'engineer') {
             model = this.models.createSoldier(factionColor);
             model.scale.setScalar(4);
         } else if (type === 'harvester') {

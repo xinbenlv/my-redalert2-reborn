@@ -94,7 +94,7 @@
 ## B4. 单位 roster（当前极度不完整）
 ### B4.1 步兵
 - [x] 基础 Rifle Infantry（Soldier）
-- [ ] Engineer
+- [x] Engineer
 - [ ] Attack Dog
 - [x] Rocket Infantry / anti-armor infantry
 - [x] Flak Trooper / anti-air infantry
@@ -175,7 +175,7 @@
 - [ ] 单位编队逻辑更像 RTS
 - [ ] 载具碾压步兵
 - [ ] 部署型单位 / 展开型单位
-- [ ] 工程师占建筑
+- [x] 工程师占建筑
 - [ ] 运输载具装载 / 卸载
 
 ## B9. veterancy / crate / map pickups
@@ -264,7 +264,7 @@
 
 ### C1. P0：先把“遭遇战成立”补齐
 - [ ] Construction Yard / MCV / 正式开局
-- [ ] Engineer
+- [x] Engineer
 - [x] Dog / Rocket infantry / AA infantry（至少 2 个）
 - [x] Radar 独立建筑化
 - [x] 取消生产 / 退款

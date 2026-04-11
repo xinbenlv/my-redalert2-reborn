@@ -231,6 +231,8 @@ class GameState {
             projectileSpeed: def.projectileSpeed || 8,
             weaponType: def.weaponType || 'rifle',
             damageProfile: def.damageProfile || null,
+            captureRange: def.captureRange || 0,
+            captureTarget: null,
             cargo: 0,
             cargoCapacity: def.cargoCapacity || 0,
             harvestRate: def.harvestRate || 0,
@@ -255,7 +257,7 @@ class GameState {
     getTargetArmorClass(target) {
         if (!target) return 'light';
         if (target.tx !== undefined) return 'building';
-        if (target.role === 'infantry' || target.role === 'anti-armor infantry' || target.role === 'anti-air infantry') {
+        if (target.role === 'infantry' || target.role === 'anti-armor infantry' || target.role === 'anti-air infantry' || target.role === 'engineer') {
             return 'infantry';
         }
         return target.armorType || 'light';
@@ -602,36 +604,53 @@ class GameState {
         // Check if right-clicked on an enemy unit
         const enemyUnit = this._findEnemyUnitAt(tile.x, tile.y);
         if (enemyUnit) {
+            let issuedAttack = false;
             for (const u of this.selected) {
-                if (!this.canUnitReceiveCommand(u)) continue;
+                if (!this.canUnitReceiveCommand(u) || !this.isCombatUnit(u)) continue;
+                u.captureTarget = null;
                 u.attackTarget = enemyUnit;
                 u.target = null;
                 u.state = 'attacking';
                 u.path = this.findPath(Math.round(u.x), Math.round(u.y), Math.floor(enemyUnit.x), Math.floor(enemyUnit.y));
                 u.pathIdx = 0;
+                issuedAttack = true;
             }
-            this.commandPings.push({ tx: tile.x, ty: tile.y, color: '#ff2200', time: 0 });
+            if (issuedAttack) {
+                this.commandPings.push({ tx: tile.x, ty: tile.y, color: '#ff2200', time: 0 });
+            }
             return;
         }
 
         // Check if right-clicked on an enemy building
         const enemyBuilding = this._findEnemyBuildingAt(tile.x, tile.y);
         if (enemyBuilding) {
+            let issuedOrder = false;
             for (const u of this.selected) {
                 if (!this.canUnitReceiveCommand(u)) continue;
+                if (u.role === 'engineer') {
+                    this.issueEngineerCaptureOrder(u, enemyBuilding);
+                    issuedOrder = true;
+                    continue;
+                }
+                if (!this.isCombatUnit(u)) continue;
+                u.captureTarget = null;
                 u.attackTarget = enemyBuilding;
                 u.target = null;
                 u.state = 'attacking';
                 u.path = this.findPath(Math.round(u.x), Math.round(u.y), enemyBuilding.tx + 1, enemyBuilding.ty + 1);
                 u.pathIdx = 0;
+                issuedOrder = true;
             }
-            this.commandPings.push({ tx: enemyBuilding.tx + 1, ty: enemyBuilding.ty + 1, color: '#ff2200', time: 0 });
+            if (issuedOrder) {
+                this.commandPings.push({ tx: enemyBuilding.tx + 1, ty: enemyBuilding.ty + 1, color: '#ff2200', time: 0 });
+            }
             return;
         }
 
         // Move command
         for (const u of this.selected) {
             if (!this.canUnitReceiveCommand(u)) continue;
+            u.captureTarget = null;
             u.target = { x: tile.x, y: tile.y };
             u.attackTarget = null;
             u._savedTarget = null;
@@ -868,6 +887,94 @@ class GameState {
         unit.state = state;
         unit.path = this.findPath(Math.round(unit.x), Math.round(unit.y), Math.floor(tx), Math.floor(ty));
         unit.pathIdx = unit.path && unit.path.length > 1 && Math.hypot(unit.path[0].x - unit.x, unit.path[0].y - unit.y) < 0.5 ? 1 : 0;
+    }
+
+    issueEngineerCaptureOrder(unit, building) {
+        if (!unit || unit.role !== 'engineer' || !building || building.owner === unit.owner || building.hp <= 0) return;
+        unit.captureTarget = building;
+        unit.attackTarget = null;
+        this.issueMoveOrder(unit, building.tx + building.size / 2 - 0.5, building.ty + building.size / 2 - 0.5, 'capturing');
+    }
+
+    captureBuilding(unit, building) {
+        if (!unit || !building || building.owner === unit.owner) return false;
+        const previousOwner = building.owner;
+        const oldPlayer = this.players[previousOwner];
+        const newPlayer = this.players[unit.owner];
+        oldPlayer.buildings = oldPlayer.buildings.filter(b => b !== building);
+        building.owner = unit.owner;
+        building.repairing = false;
+        building.training = null;
+        building.trainProgress = 0;
+        building.trainQueue = [];
+        building.hp = Math.max(building.hp, Math.floor(building.maxHp * 0.35));
+        if (!building.rallyPoint && this.canSetRallyPoint(building)) {
+            building.rallyPoint = { x: building.tx + building.size + 1, y: building.ty + Math.floor(building.size / 2) };
+        }
+        newPlayer.buildings.push(building);
+        unit.captureTarget = null;
+        unit.attackTarget = null;
+        unit.target = null;
+        unit.path = null;
+        unit.state = 'dead';
+        unit.deadTimer = 0;
+        if (unit.owner === this.currentPlayer) {
+            this.eva(`Engineer captured ${this.getDisplayName(building.type)}.`);
+            this.selected = this.selected.filter(entity => entity !== unit);
+            this.updateSelectionInfo();
+            this.updateUI();
+        } else if (previousOwner === this.currentPlayer) {
+            this.eva(`Enemy engineer captured your ${this.getDisplayName(building.type)}.`);
+            if (this.selected.includes(building)) {
+                this.selected = [];
+                this.updateSelectionInfo();
+            }
+            this.updateUI();
+        }
+        return true;
+    }
+
+    updateEngineerUnit(unit, dt) {
+        if (unit.state === 'dead') {
+            unit.deadTimer += dt;
+            return;
+        }
+
+        const target = unit.captureTarget;
+        if (!target || target.hp <= 0 || target.owner === unit.owner) {
+            unit.captureTarget = null;
+            if (unit.state === 'capturing') {
+                unit.state = 'idle';
+                unit.target = null;
+                unit.path = null;
+            }
+        }
+
+        if (unit.state === 'capturing' && unit.captureTarget) {
+            const building = unit.captureTarget;
+            const captureX = building.tx + building.size / 2 - 0.5;
+            const captureY = building.ty + building.size / 2 - 0.5;
+            const nearestX = Math.max(building.tx - 0.5, Math.min(unit.x, building.tx + building.size - 0.5));
+            const nearestY = Math.max(building.ty - 0.5, Math.min(unit.y, building.ty + building.size - 0.5));
+            const edgeDist = Math.hypot(unit.x - nearestX, unit.y - nearestY);
+            if (edgeDist <= Math.max(0.75, unit.captureRange || 0)) {
+                this.captureBuilding(unit, building);
+                return;
+            }
+            if (!unit.path || unit.pathIdx >= unit.path.length) {
+                unit.path = this.findPath(Math.round(unit.x), Math.round(unit.y), Math.floor(captureX), Math.floor(captureY));
+                unit.pathIdx = 0;
+            }
+            this.moveUnitAlongPath(unit, dt);
+            if (unit.state === 'idle') {
+                unit.state = 'capturing';
+            }
+            return;
+        }
+
+        if (unit.state === 'moving') {
+            this.moveUnitAlongPath(unit, dt);
+        }
     }
 
     getEntityAnchor(entity) {
@@ -1292,6 +1399,10 @@ class GameState {
                     this.updateHarvesterUnit(u, p, dt);
                     continue;
                 }
+                if (u.role === 'engineer') {
+                    this.updateEngineerUnit(u, dt);
+                    continue;
+                }
 
                 if (u.state === 'dead') {
                     u.deadTimer += dt;
@@ -1518,7 +1629,7 @@ class GameState {
         for (let pi = 0; pi < this.players.length; pi++) {
             const p = this.players[pi];
             for (const u of p.units) {
-                if (u.state !== 'idle' || u.hp <= 0 || u.state === 'dead') continue;
+                if (u.state !== 'idle' || u.hp <= 0 || u.state === 'dead' || !this.isCombatUnit(u)) continue;
 
                 // Find nearest enemy in sight range
                 const enemy = this._findNearestEnemy(u, pi);
@@ -2224,9 +2335,10 @@ class GameState {
                 this.addBuildItem(container, type, def.name, def.cost, def.description, false);
             });
         } else {
-            ['soldier', 'rocketInfantry', 'flakTrooper', 'harvester', 'tank'].forEach(type => {
+            ['soldier', 'rocketInfantry', 'flakTrooper', 'engineer', 'harvester', 'tank'].forEach(type => {
                 const def = UNIT_TYPES[type];
-                this.addBuildItem(container, type, def.name, def.cost, def.role, true);
+                const description = type === 'engineer' ? 'Captures enemy buildings on contact.' : def.role;
+                this.addBuildItem(container, type, def.name, def.cost, description, true);
             });
         }
 
@@ -2332,10 +2444,15 @@ class GameState {
             if (s.tx === undefined) {
                 const extras = [];
                 if (s.role === 'harvester') extras.push(`ORE: ${Math.floor(s.cargo)}/${s.cargoCapacity}`);
-                else extras.push(`DMG: ${s.damage} | RNG: ${s.range}`);
+                else if (s.role === 'engineer') {
+                    extras.push('CAPTURE: enemy buildings');
+                    if (s.captureTarget && s.captureTarget.hp > 0) {
+                        extras.push(`TARGET: ${this.getDisplayName(s.captureTarget.type)}`);
+                    }
+                } else extras.push(`DMG: ${s.damage} | RNG: ${s.range}`);
                 info.innerHTML = `<div style="color:#00ff88">${this.getDisplayName(s.type)}</div>
                     <div>HP: ${Math.floor(s.hp)}/${s.maxHp}</div>
-                    <div>${extras.join(' ')}</div>
+                    <div>${extras.join(' | ')}</div>
                     <div style="color:#666;font-size:9px">${s.state}</div>`;
             } else {
                 const def = BUILD_TYPES[s.type];
