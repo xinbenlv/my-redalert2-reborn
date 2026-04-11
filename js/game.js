@@ -2673,14 +2673,19 @@ class GameState {
             return true;
         };
 
-        if (POWER_SYSTEM.isLowPower(ai) && tryBuild('powerPlant')) return;
+        if (POWER_SYSTEM.isLowPower(ai)) {
+            const advancedPowerOnline = builtTypes.has('advancedPowerPlant');
+            const advancedPowerReady = builtTypes.has('radarDome') && ai.money >= BUILD_TYPES.advancedPowerPlant.cost;
+            if (!advancedPowerOnline && advancedPowerReady && tryBuild('advancedPowerPlant')) return;
+            if (tryBuild('powerPlant')) return;
+        }
         if (!builtTypes.has('refinery') && tryBuild('refinery')) return;
         if (!builtTypes.has('barracks') && tryBuild('barracks')) return;
         if (!builtTypes.has('radarDome') && tryBuild('radarDome')) return;
         if (!builtTypes.has('warFactory') && tryBuild('warFactory')) return;
         if (!builtTypes.has('airfield') && builtTypes.has('warFactory') && ai.money >= BUILD_TYPES.airfield.cost + 1000 && tryBuild('airfield')) return;
         if (!builtTypes.has('battleLab') && builtTypes.has('warFactory') && ai.money >= BUILD_TYPES.battleLab.cost && tryBuild('battleLab')) return;
-        if (ai.buildings.filter(b => b.type === 'powerPlant').length < 2 && ai.money > 2200 && tryBuild('powerPlant')) return;
+        if (ai.buildings.filter(b => b.type === 'powerPlant' || b.type === 'advancedPowerPlant').length < 2 && ai.money > 2200 && tryBuild('powerPlant')) return;
         if (builtTypes.has('barracks') && ai.buildings.filter(b => b.type === 'pillbox' && b.hp > 0).length < 1 && ai.money >= BUILD_TYPES.pillbox.cost && tryBuild('pillbox')) return;
         if (builtTypes.has('warFactory') && ai.buildings.filter(b => b.type === 'sentryGun' && b.hp > 0).length < 1 && ai.money >= BUILD_TYPES.sentryGun.cost && tryBuild('sentryGun')) return;
 
@@ -3255,7 +3260,7 @@ class GameState {
         const p = this.players[this.currentPlayer];
 
         if (activeTab === 'buildings') {
-            ['powerPlant', 'refinery', 'barracks', 'radarDome', 'warFactory', 'airfield', 'battleLab', 'pillbox', 'sentryGun', 'sandbagWall'].forEach(type => {
+            ['powerPlant', 'advancedPowerPlant', 'refinery', 'barracks', 'radarDome', 'warFactory', 'airfield', 'battleLab', 'pillbox', 'sentryGun', 'sandbagWall'].forEach(type => {
                 const def = BUILD_TYPES[type];
                 this.addBuildItem(container, type, def.name, def.cost, def.description, false);
             });

@@ -26,6 +26,18 @@ window.BUILD_TYPES = {
         description: 'Provides base power.',
         prerequisites: ['constructionYard']
     },
+    advancedPowerPlant: {
+        name: 'Advanced Power Plant',
+        cost: 1200,
+        buildTime: 8500,
+        hp: 850,
+        sight: 6,
+        size: 2,
+        powerSupply: 200,
+        powerDrain: 0,
+        description: 'High-output reactor that keeps high-tech bases online.',
+        prerequisites: ['constructionYard', 'powerPlant', 'radarDome']
+    },
     refinery: {
         name: 'Refinery',
         cost: 1500,

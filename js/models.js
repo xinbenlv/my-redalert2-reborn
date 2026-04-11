@@ -603,6 +603,57 @@ class ModelFactory {
         return group;
     }
 
+    createAdvancedPowerPlant(factionColor) {
+        const fc = this._factionColor(factionColor);
+        const group = this.createPowerPlant(fc);
+        group.userData.modelType = 'advancedPowerPlant';
+
+        const dome = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.42, 0.48, 0.5, 12),
+            this._mat(0x9fb3c8, { roughness: 0.28, metalness: 0.7, emissive: 0x3aa6ff, emissiveIntensity: 0.22 })
+        );
+        dome.position.set(-0.28, 0.86, 0.08);
+        dome.castShadow = true;
+        group.add(dome);
+
+        const cap = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.24, 0.3, 0.18, 10),
+            this._mat(fc, { roughness: 0.32, metalness: 0.78, emissive: fc, emissiveIntensity: 0.38 })
+        );
+        cap.position.set(-0.28, 1.18, 0.08);
+        cap.castShadow = true;
+        group.add(cap);
+
+        const energyRing = new THREE.Mesh(
+            new THREE.TorusGeometry(0.34, 0.05, 10, 24),
+            this._mat(0x55d5ff, { roughness: 0.18, metalness: 0.9, emissive: 0x49c9ff, emissiveIntensity: 0.42 })
+        );
+        energyRing.rotation.x = Math.PI / 2;
+        energyRing.position.set(-0.28, 0.94, 0.08);
+        group.add(energyRing);
+
+        const stackLeft = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.09, 0.11, 1.05, 10),
+            this._mat(0x46515d, { roughness: 0.4, metalness: 0.55 })
+        );
+        stackLeft.position.set(0.5, 0.92, 0.42);
+        stackLeft.castShadow = true;
+        group.add(stackLeft);
+
+        const stackRight = stackLeft.clone();
+        stackRight.position.z = -0.06;
+        group.add(stackRight);
+
+        const stripe = new THREE.Mesh(
+            new THREE.BoxGeometry(1.35, 0.08, 0.1),
+            this._mat(0x55d5ff, { roughness: 0.28, metalness: 0.72, emissive: 0x2da4ff, emissiveIntensity: 0.28 })
+        );
+        stripe.position.set(0, 0.82, 0.6);
+        group.add(stripe);
+
+        return group;
+    }
+
     createRadarDome(factionColor) {
         const fc = this._factionColor(factionColor);
         const group = new THREE.Group();

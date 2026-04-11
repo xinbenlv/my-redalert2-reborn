@@ -59,7 +59,7 @@
 ## B3. 建筑系统（经济 / 军事 / 科技 / 防御）
 ### B3.1 经济与基础设施
 - [x] Power Plant
-- [ ] Advanced Power Plant
+- [x] Advanced Power Plant
 - [x] Refinery
 - [ ] Service Depot
 - [ ] Ore Purifier / economy amplifiers（若采用 Yuri/扩展思路可选）
