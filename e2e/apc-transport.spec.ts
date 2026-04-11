@@ -98,3 +98,69 @@ test('infantry can board a friendly apc by right-clicking the transport', async 
   expect(boardingState.engineerState).toBe('loaded');
   expect(boardingState.engineerVisible).toBe(false);
 });
+
+test('ai loads infantry into apc and unloads them near a remote target', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForFunction(() => Boolean((window as any).game));
+
+  const aiState = await page.evaluate(() => {
+    const game = (window as any).game;
+    const human = game.players[0];
+    const ai = game.players[1];
+
+    human.units = [];
+    human.buildings = [
+      game.createBuilding('constructionYard', 6, 6, 0),
+      game.createBuilding('powerPlant', 22, 22, 0),
+      game.createBuilding('refinery', 12, 10, 0),
+    ];
+
+    const apc = game.createUnit('apc', 31, 31, 1);
+    const soldier = game.createUnit('soldier', 29, 31, 1);
+    const rocket = game.createUnit('rocketInfantry', 29, 32, 1);
+    ai.units = [apc, soldier, rocket];
+    ai.buildings = [
+      game.createBuilding('constructionYard', 30, 28, 1),
+      game.createBuilding('powerPlant', 26, 28, 1),
+      game.createBuilding('refinery', 26, 24, 1),
+      game.createBuilding('barracks', 30, 24, 1),
+      game.createBuilding('warFactory', 34, 28, 1),
+    ];
+    ai.money = 0;
+
+    let boardedPeak = 0;
+    let unloadTriggered = false;
+    for (let i = 0; i < 280; i++) {
+      game.aiTimer = game.aiDecisionInterval;
+      game.updateAI(5000);
+      game.update(100);
+      boardedPeak = Math.max(boardedPeak, apc.passengers.length);
+      if (!apc.passengers.length && boardedPeak >= 2) {
+        unloadTriggered = true;
+      }
+    }
+
+    const target = human.buildings.find((building: any) => building.type === 'powerPlant') || { tx: 22, ty: 22, hp: 0 };
+    return {
+      boardedPeak,
+      unloadTriggered,
+      apcPassengers: apc.passengers.length,
+      apcState: apc.state,
+      soldierState: soldier.state,
+      rocketState: rocket.state,
+      soldierDistance: Math.hypot(soldier.x - (target.tx + 1), soldier.y - (target.ty + 1)),
+      rocketDistance: Math.hypot(rocket.x - (target.tx + 1), rocket.y - (target.ty + 1)),
+      targetHp: target.hp,
+      apcUnloadTarget: apc.unloadTarget,
+    };
+  });
+
+  expect(aiState.boardedPeak).toBeGreaterThanOrEqual(2);
+  expect(aiState.unloadTriggered).toBe(true);
+  expect(aiState.apcPassengers).toBeLessThanOrEqual(2);
+  expect(['idle', 'attacking', 'engaging', 'moving', 'unloadingPassengers']).toContain(aiState.apcState);
+  expect(['attacking', 'engaging', 'idle', 'loaded']).toContain(aiState.soldierState);
+  expect(['attacking', 'engaging', 'idle', 'loaded']).toContain(aiState.rocketState);
+  expect(aiState.targetHp).toBeLessThan(600);
+  expect(aiState.apcUnloadTarget).toBeDefined();
+});

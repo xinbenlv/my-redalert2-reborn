@@ -616,6 +616,7 @@ class GameState {
             unloadTarget: null,
             transportTarget: null,
             transportCarrier: null,
+            aiTransportAttackTarget: null,
             harvestRate: def.harvestRate || 0,
             harvestInterval: def.harvestInterval || 0,
             unloadRate: def.unloadRate || 0,
@@ -1365,6 +1366,7 @@ class GameState {
         passenger.transportTarget = carrier;
         passenger.captureTarget = null;
         passenger.attackTarget = null;
+        passenger._transportBoardingAnchor = null;
         this.issueMoveOrder(passenger, carrier.x, carrier.y, 'boardingTransport');
         return true;
     }
@@ -1394,6 +1396,7 @@ class GameState {
         passenger.captureTarget = null;
         passenger.path = null;
         passenger.pathIdx = 0;
+        passenger._transportBoardingAnchor = null;
         passenger.x = carrier.x;
         passenger.y = carrier.y;
         passenger.state = 'loaded';
@@ -1409,6 +1412,7 @@ class GameState {
         if (!this.isTransportUnit(carrier) || !carrier.passengers.length) return false;
         carrier.loadTarget = null;
         carrier.unloadTarget = { x: tx, y: ty };
+        carrier._transportUnloadAnchor = null;
         if (Math.hypot(carrier.x - tx, carrier.y - ty) > carrier.unloadRadius) {
             this.issueMoveOrder(carrier, tx, ty, 'unloadingPassengers');
         } else {
@@ -1420,6 +1424,7 @@ class GameState {
     unloadTransport(carrier, targetX = carrier?.x, targetY = carrier?.y) {
         if (!this.isTransportUnit(carrier) || !carrier.passengers.length) return 0;
         const positions = this.getAvailableUnloadPositions(carrier, targetX, targetY, carrier.passengers.length);
+        const unloadedPassengers = [];
         let unloaded = 0;
         while (carrier.passengers.length && positions.length) {
             const passenger = carrier.passengers.shift();
@@ -1432,11 +1437,20 @@ class GameState {
             passenger.target = null;
             passenger.path = null;
             passenger.pathIdx = 0;
+            passenger._transportBoardingAnchor = null;
             this.renderer3d?.setUnitVisible(passenger, true);
+            unloadedPassengers.push(passenger);
             unloaded += 1;
+        }
+        const attackTarget = carrier.aiTransportAttackTarget;
+        const targetAlive = attackTarget && ((attackTarget.tx !== undefined && attackTarget.hp > 0) || (attackTarget.tx === undefined && attackTarget.state !== 'dead' && attackTarget.hp > 0));
+        if (targetAlive && unloadedPassengers.length) {
+            this.issueAIAttackOrder(unloadedPassengers, attackTarget);
         }
         if (!carrier.passengers.length) {
             carrier.unloadTarget = null;
+            carrier._transportUnloadAnchor = null;
+            carrier.aiTransportAttackTarget = null;
         }
         return unloaded;
     }
@@ -1479,7 +1493,11 @@ class GameState {
         if (unit.state === 'unloadingPassengers' && unit.unloadTarget) {
             const dist = Math.hypot(unit.x - unit.unloadTarget.x, unit.y - unit.unloadTarget.y);
             if (dist > unit.unloadRadius) {
-                this.issueMoveOrder(unit, unit.unloadTarget.x, unit.unloadTarget.y, 'unloadingPassengers');
+                const needsUnloadPath = !unit.path || !unit.path.length || !unit._transportUnloadAnchor || Math.hypot(unit._transportUnloadAnchor.x - unit.unloadTarget.x, unit._transportUnloadAnchor.y - unit.unloadTarget.y) > 0.5;
+                if (needsUnloadPath) {
+                    this.issueMoveOrder(unit, unit.unloadTarget.x, unit.unloadTarget.y, 'unloadingPassengers');
+                    unit._transportUnloadAnchor = { x: unit.unloadTarget.x, y: unit.unloadTarget.y };
+                }
                 this.moveUnitAlongPath(unit, dt);
                 return true;
             }
@@ -2311,6 +2329,7 @@ class GameState {
                     const carrier = u.transportTarget;
                     if (!carrier || !this.canTransportPassenger(carrier, u)) {
                         u.transportTarget = null;
+                        u._transportBoardingAnchor = null;
                         if (u.state === 'boardingTransport') u.state = 'idle';
                         continue;
                     }
@@ -2318,7 +2337,11 @@ class GameState {
                     if (dist <= (carrier.transportPickupRange || 1.1)) {
                         this.loadPassengerIntoTransport(carrier, u);
                     } else {
-                        this.issueMoveOrder(u, carrier.x, carrier.y, 'boardingTransport');
+                        const needsBoardingPath = !u.path || !u.path.length || !u._transportBoardingAnchor || Math.hypot(u._transportBoardingAnchor.x - carrier.x, u._transportBoardingAnchor.y - carrier.y) > 0.5;
+                        if (needsBoardingPath) {
+                            this.issueMoveOrder(u, carrier.x, carrier.y, 'boardingTransport');
+                            u._transportBoardingAnchor = { x: carrier.x, y: carrier.y };
+                        }
                         this.moveUnitAlongPath(u, dt);
                     }
                     continue;
@@ -2898,6 +2921,63 @@ class GameState {
         return harassers;
     }
 
+    assignAITransportAssault(aiPlayer, enemyPlayer, idleCombatUnits) {
+        const apcs = aiPlayer.units.filter(unit =>
+            unit.type === 'apc' &&
+            unit.state !== 'dead' &&
+            unit.state !== 'loading' &&
+            unit.state !== 'unloadingPassengers' &&
+            !unit.attackTarget
+        );
+        if (!apcs.length) return [];
+
+        const target = this.getAIPriorityTarget(aiPlayer, enemyPlayer);
+        const targetAnchor = this.getEntityAnchor(target);
+        if (!targetAnchor) return [];
+
+        const assignments = [];
+        const availableInfantry = idleCombatUnits.filter(unit =>
+            unit.tx === undefined &&
+            this.isCombatUnit(unit) &&
+            TRANSPORTABLE_INFANTRY_TYPES.has(unit.type)
+        );
+
+        for (const apc of apcs) {
+            const distanceToTarget = Math.hypot(apc.x - targetAnchor.x, apc.y - targetAnchor.y);
+            if (distanceToTarget < 8) continue;
+
+            const pendingBoarders = aiPlayer.units.filter(unit => unit.transportTarget === apc && unit.state !== 'loaded');
+            const minDropForce = Math.min(2, apc.passengerCapacity || 0);
+            if (apc.passengers.length >= minDropForce || (apc.passengers.length > 0 && pendingBoarders.length === 0)) {
+                apc.aiTransportAttackTarget = target;
+                if (this.orderTransportUnload(apc, targetAnchor.x, targetAnchor.y)) {
+                    assignments.push(apc, ...apc.passengers);
+                }
+                continue;
+            }
+
+            const freeSlots = Math.max(0, apc.passengerCapacity - apc.passengers.length - pendingBoarders.length);
+            if (freeSlots <= 0 || availableInfantry.length === 0) continue;
+
+            const boarders = [...availableInfantry]
+                .sort((a, b) => Math.hypot(a.x - apc.x, a.y - apc.y) - Math.hypot(b.x - apc.x, b.y - apc.y))
+                .slice(0, freeSlots);
+            let issuedBoarding = false;
+            for (const infantry of boarders) {
+                if (!this.orderPassengerToBoard(infantry, apc)) continue;
+                const index = availableInfantry.indexOf(infantry);
+                if (index >= 0) availableInfantry.splice(index, 1);
+                assignments.push(infantry);
+                issuedBoarding = true;
+            }
+            if (issuedBoarding) {
+                assignments.push(apc);
+            }
+        }
+
+        return assignments;
+    }
+
     updateAI(dt) {
         this.aiTimer += dt;
         if (this.aiTimer < this.aiDecisionInterval) return;
@@ -3051,12 +3131,14 @@ class GameState {
             } else if (aiSoldierCount > 1 && aiSoldierCount % 2 === 0 && ai.money >= UNIT_TYPES.flakTrooper.cost) {
                 infantryChoice = 'flakTrooper';
             } else if (ai.money < UNIT_TYPES.soldier.cost) {
-                return;
+                infantryChoice = null;
             }
 
-            ai.money -= UNIT_TYPES[infantryChoice].cost;
-            if (!bb.training) bb.training = infantryChoice;
-            else bb.trainQueue.push(infantryChoice);
+            if (infantryChoice) {
+                ai.money -= UNIT_TYPES[infantryChoice].cost;
+                if (!bb.training) bb.training = infantryChoice;
+                else bb.trainQueue.push(infantryChoice);
+            }
         }
 
         let idleCombatUnits = ai.units.filter(u => this.isCombatUnit(u) && u.state === 'idle');
@@ -3064,6 +3146,12 @@ class GameState {
         if (assignedDefenders.length > 0) {
             const defenderSet = new Set(assignedDefenders);
             idleCombatUnits = idleCombatUnits.filter(unit => !defenderSet.has(unit));
+        }
+
+        const assignedTransportAssault = this.assignAITransportAssault(ai, enemyPlayer, idleCombatUnits);
+        if (assignedTransportAssault.length > 0) {
+            const transportSet = new Set(assignedTransportAssault);
+            idleCombatUnits = idleCombatUnits.filter(unit => !transportSet.has(unit));
         }
 
         const assignedHarassers = this.assignAIHarassers(ai, enemyPlayer, idleCombatUnits);
