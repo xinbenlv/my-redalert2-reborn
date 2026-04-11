@@ -10,6 +10,7 @@ test('skirmish setup applies selected credits, map, faction, and difficulty befo
   await page.selectOption('#setup-map', 'crossroads');
   await page.selectOption('#setup-player-faction', 'allied');
   await page.selectOption('#setup-ai-difficulty', 'hard');
+  await page.selectOption('#setup-ai-players', '3');
   await page.selectOption('#setup-ai-build-order', 'air');
   await page.selectOption('#setup-game-speed', 'fast');
   await page.click('#skirmish-start-button');
@@ -23,10 +24,14 @@ test('skirmish setup applies selected credits, map, faction, and difficulty befo
       config: game.matchConfig,
       playerMoney: game.players[0].money,
       aiMoney: game.players[1].money,
+      aiPlayers: game.matchConfig.aiPlayers,
+      playerCount: game.players.filter((entry: any) => !entry.isNeutral).length,
       playerFaction: game.players[0].faction,
       aiDifficulty: game.aiConfig?.difficulty,
       aiBuildOrder: game.aiConfig?.buildOrder,
       aiBuildOrderLabel: game.players[1]?.aiBuildOrderLabel,
+      aiColors: game.players.filter((entry: any) => entry.isAI).map((entry: any) => entry.color),
+      spawnPoints: game.mapProfile?.spawnPoints?.slice(0, 4),
       gameSpeed: game.matchConfig.gameSpeed,
       gameSpeedLabel: game.gameSpeedProfile?.label,
       gameSpeedMultiplier: game.gameSpeedMultiplier,
@@ -39,15 +44,20 @@ test('skirmish setup applies selected credits, map, faction, and difficulty befo
   expect(applied.config.startingCredits).toBe(10000);
   expect(applied.playerMoney).toBe(10000);
   expect(applied.aiMoney).toBe(10000);
+  expect(applied.aiPlayers).toBe(3);
+  expect(applied.playerCount).toBe(4);
   expect(applied.playerFaction).toBe('allied');
   expect(applied.aiDifficulty).toBe('hard');
   expect(applied.aiBuildOrder).toBe('air');
   expect(applied.aiBuildOrderLabel).toBe('Air Supremacy');
+  expect(new Set(applied.aiColors).size).toBe(3);
+  expect(applied.spawnPoints).toHaveLength(4);
   expect(applied.gameSpeed).toBe('fast');
   expect(applied.gameSpeedLabel).toBe('Fast Strike');
   expect(applied.gameSpeedMultiplier).toBeGreaterThan(1);
   expect(applied.mapProfile).toBe('crossroads');
   expect(applied.title).toContain('CROSSROADS');
+  expect(applied.briefing).toContain('3 AI');
   expect(applied.briefing).toContain('HARD');
   expect(applied.briefing).toContain('AIR SUPREMACY');
   expect(applied.briefing).toContain('FAST STRIKE');
@@ -125,10 +135,11 @@ test('skirmish setup exposes twin rivers and boots the distinct battlefield layo
   });
 
   expect(twinRivers.mapProfile).toBe('twin-rivers');
-  expect(twinRivers.spawnPoints).toEqual([
+  expect(twinRivers.spawnPoints.slice(0, 2)).toEqual([
     { x: 7, y: 30 },
     { x: 30, y: 8 },
   ]);
+  expect(twinRivers.spawnPoints).toHaveLength(4);
   expect(twinRivers.title).toContain('TWIN RIVERS');
   expect(twinRivers.leftChannel).toBe('water');
   expect(twinRivers.rightChannel).toBe('water');
@@ -137,4 +148,64 @@ test('skirmish setup exposes twin rivers and boots the distinct battlefield layo
   expect(twinRivers.lowerFord).not.toBe('water');
   expect(twinRivers.flankOre).toBe('ore');
   expect(twinRivers.enemyOre).toBe('ore');
+});
+
+
+test('multi-AI skirmish declares victory only after the last hostile base is gone', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForFunction(() => Boolean((window as any).GameState));
+
+  const outcome = await page.evaluate(() => {
+    const GameState = (window as any).GameState;
+    const game = new GameState({
+      map: 'classic',
+      startingCredits: 6500,
+      playerFaction: 'soviet',
+      aiDifficulty: 'easy',
+      aiPlayers: 3,
+      aiBuildOrder: 'balanced',
+      gameSpeed: 'normal',
+    });
+
+    const aiOwners = game.players
+      .map((player: any, index: number) => ({ player, index }))
+      .filter(({ player, index }: any) => index !== game.currentPlayer && player.isAI)
+      .map(({ index }: any) => index);
+
+    const wipeBase = (owner: number) => {
+      const player = game.players[owner];
+      for (const building of player.buildings) building.hp = 0;
+      for (const unit of player.units) {
+        unit.hp = 0;
+        unit.state = 'dead';
+      }
+    };
+
+    wipeBase(aiOwners[0]);
+    wipeBase(aiOwners[1]);
+    game.checkVictoryConditions();
+    const beforeFinalKill = {
+      gameOver: game.gameOver,
+      livingAIs: game.players.filter((player: any, index: number) => index !== game.currentPlayer && player.isAI && game.hasLivingBase(player)).length,
+    };
+
+    wipeBase(aiOwners[2]);
+    game.checkVictoryConditions();
+    return {
+      beforeFinalKill,
+      afterFinalKill: {
+        gameOver: game.gameOver,
+        playerWon: game.matchResult?.playerWon,
+        summary: game.matchResult?.summaryText || null,
+        livingAIs: game.players.filter((player: any, index: number) => index !== game.currentPlayer && player.isAI && game.hasLivingBase(player)).length,
+      },
+    };
+  });
+
+  expect(outcome.beforeFinalKill.gameOver).toBeFalsy();
+  expect(outcome.beforeFinalKill.livingAIs).toBe(1);
+  expect(outcome.afterFinalKill.gameOver).toBeTruthy();
+  expect(outcome.afterFinalKill.playerWon).toBeTruthy();
+  expect(outcome.afterFinalKill.livingAIs).toBe(0);
+  expect(outcome.afterFinalKill.summary).toContain('Enemy');
 });

@@ -17,13 +17,13 @@ const HARVESTER_RETREAT_RECENT_HIT_MS = 3200;
 const HARVESTER_RETREAT_HEALTH_RATIO = 0.55;
 const HARVESTER_RETREAT_THREAT_RADIUS = 6.5;
 const HARVESTER_RETREAT_SAFE_HOLD_MS = 1800;
-const NEUTRAL_PLAYER_INDEX = 2;
+const PLAYER_COLORS = ['#cc2222', '#3f7cff', '#2dbd63', '#f2c14e'];
 const MAP_PROFILES = {
     classic: {
         id: 'classic',
         name: 'Classic Frontier',
         briefing: 'Balanced ore clusters with the familiar river split.',
-        spawnPoints: [{ x: 8, y: 8 }, { x: MAP_SIZE - 10, y: MAP_SIZE - 10 }],
+        spawnPoints: [{ x: 8, y: 8 }, { x: MAP_SIZE - 10, y: MAP_SIZE - 10 }, { x: MAP_SIZE - 10, y: 8 }, { x: 8, y: MAP_SIZE - 10 }],
         neutralStructures: [
             { type: 'battleBunker', x: 19, y: 19 },
         ],
@@ -32,7 +32,7 @@ const MAP_PROFILES = {
         id: 'crossroads',
         name: 'Crossroads',
         briefing: 'A harder center fight with a broad crossing and exposed ore lanes.',
-        spawnPoints: [{ x: 10, y: 10 }, { x: MAP_SIZE - 13, y: MAP_SIZE - 13 }],
+        spawnPoints: [{ x: 10, y: 10 }, { x: MAP_SIZE - 13, y: MAP_SIZE - 13 }, { x: MAP_SIZE - 13, y: 10 }, { x: 10, y: MAP_SIZE - 13 }],
         neutralStructures: [
             { type: 'battleBunker', x: 18, y: 18 },
             { type: 'battleBunker', x: 21, y: 18 },
@@ -44,7 +44,7 @@ const MAP_PROFILES = {
         id: 'twin-rivers',
         name: 'Twin Rivers',
         briefing: 'Two river channels carve the battlefield, with a contested central ore basin and safer flank expansions.',
-        spawnPoints: [{ x: 7, y: MAP_SIZE - 10 }, { x: MAP_SIZE - 10, y: 8 }],
+        spawnPoints: [{ x: 7, y: MAP_SIZE - 10 }, { x: MAP_SIZE - 10, y: 8 }, { x: 7, y: 8 }, { x: MAP_SIZE - 10, y: MAP_SIZE - 10 }],
         neutralStructures: [
             { type: 'battleBunker', x: 14, y: 18 },
             { type: 'battleBunker', x: 25, y: 18 },
@@ -56,6 +56,7 @@ const DEFAULT_MATCH_CONFIG = {
     map: 'classic',
     playerFaction: 'soviet',
     aiDifficulty: 'medium',
+    aiPlayers: 1,
     aiBuildOrder: 'balanced',
     gameSpeed: 'normal',
 };
@@ -131,6 +132,7 @@ function normalizeMatchConfig(config = {}) {
     const map = MAP_PROFILES[config.map] ? config.map : DEFAULT_MATCH_CONFIG.map;
     const playerFaction = config.playerFaction === 'allied' ? 'allied' : 'soviet';
     const aiDifficulty = ['easy', 'medium', 'hard'].includes(config.aiDifficulty) ? config.aiDifficulty : DEFAULT_MATCH_CONFIG.aiDifficulty;
+    const aiPlayers = Math.max(1, Math.min(3, Number(config.aiPlayers) || DEFAULT_MATCH_CONFIG.aiPlayers));
     const aiBuildOrder = AI_BUILD_ORDER_PROFILES[config.aiBuildOrder] ? config.aiBuildOrder : DEFAULT_MATCH_CONFIG.aiBuildOrder;
     const gameSpeed = GAME_SPEED_PROFILES[config.gameSpeed] ? config.gameSpeed : DEFAULT_MATCH_CONFIG.gameSpeed;
     return {
@@ -138,6 +140,7 @@ function normalizeMatchConfig(config = {}) {
         map,
         playerFaction,
         aiDifficulty,
+        aiPlayers,
         aiBuildOrder,
         gameSpeed,
     };
@@ -155,15 +158,22 @@ function persistMatchConfig(config) {
     localStorage.setItem(MATCH_CONFIG_STORAGE_KEY, JSON.stringify(normalizeMatchConfig(config)));
 }
 
-function getFactionProfile(faction, role = 'player') {
-    if (faction === 'allied') {
-        return role === 'player'
-            ? { faction: 'allied', color: '#3f7cff' }
-            : { faction: 'soviet', color: '#cc2222' };
-    }
-    return role === 'player'
-        ? { faction: 'soviet', color: '#cc2222' }
-        : { faction: 'allied', color: '#3f7cff' };
+function getPlayerFactionProfile(faction, color = null) {
+    return {
+        faction: faction === 'allied' ? 'allied' : 'soviet',
+        color: color || (faction === 'allied' ? '#3f7cff' : '#cc2222'),
+    };
+}
+
+function getAIFactionProfile(playerFaction, aiIndex = 0) {
+    const aiFaction = playerFaction === 'allied' ? 'soviet' : 'allied';
+    const fallbackColors = playerFaction === 'allied'
+        ? ['#cc2222', '#2dbd63', '#f2c14e']
+        : ['#3f7cff', '#2dbd63', '#f2c14e'];
+    return {
+        faction: aiFaction,
+        color: fallbackColors[aiIndex] || PLAYER_COLORS[(aiIndex + 1) % PLAYER_COLORS.length],
+    };
 }
 
 function getAIDifficultyProfile(difficulty) {
@@ -204,7 +214,7 @@ function updateSetupBriefing(config) {
     const mapProfile = MAP_PROFILES[normalized.map];
     const aiPlan = getAIBuildOrderProfile(normalized.aiBuildOrder);
     const speedLabel = getGameSpeedLabel(normalized.gameSpeed).toUpperCase();
-    briefingEl.textContent = `${mapProfile.name.toUpperCase()} • ${normalized.aiDifficulty.toUpperCase()} AI • ${aiPlan.label.toUpperCase()} • ${speedLabel} • $${normalized.startingCredits}`;
+    briefingEl.textContent = `${mapProfile.name.toUpperCase()} • ${normalized.aiPlayers} AI • ${normalized.aiDifficulty.toUpperCase()} • ${aiPlan.label.toUpperCase()} • ${speedLabel} • $${normalized.startingCredits}`;
 }
 
 // ==================== GAME STATE ====================
@@ -250,14 +260,29 @@ class GameState {
         this.fog = [];
         this.generateMap();
 
-        // Players: Human vs AI
-        const playerFaction = getFactionProfile(this.matchConfig.playerFaction, 'player');
-        const aiFaction = getFactionProfile(this.matchConfig.playerFaction, 'ai');
+        // Players: Human vs AI coalition
+        const playerFaction = getPlayerFactionProfile(this.matchConfig.playerFaction, PLAYER_COLORS[0]);
         this.players = [
-            { faction: playerFaction.faction, money: this.matchConfig.startingCredits, buildings: [], units: [], color: playerFaction.color, isAI: false, lowPowerNotified: false, startingBaseGranted: false },
-            { faction: aiFaction.faction, money: this.matchConfig.startingCredits, buildings: [], units: [], color: aiFaction.color, isAI: true, lowPowerNotified: false, startingBaseGranted: false, aiBuildOrder: this.aiConfig.buildOrder, aiBuildOrderLabel: this.aiConfig.label },
-            { faction: 'neutral', money: 0, buildings: [], units: [], color: '#8a8a8a', isAI: false, isNeutral: true, canLose: false, lowPowerNotified: false, startingBaseGranted: true }
+            { faction: playerFaction.faction, money: this.matchConfig.startingCredits, buildings: [], units: [], color: playerFaction.color, isAI: false, lowPowerNotified: false, startingBaseGranted: false }
         ];
+        for (let aiIndex = 0; aiIndex < this.matchConfig.aiPlayers; aiIndex += 1) {
+            const aiFaction = getAIFactionProfile(this.matchConfig.playerFaction, aiIndex);
+            this.players.push({
+                faction: aiFaction.faction,
+                money: this.matchConfig.startingCredits,
+                buildings: [],
+                units: [],
+                color: aiFaction.color,
+                isAI: true,
+                lowPowerNotified: false,
+                startingBaseGranted: false,
+                aiBuildOrder: this.aiConfig.buildOrder,
+                aiBuildOrderLabel: this.aiConfig.label,
+            });
+        }
+        this.neutralPlayerIndex = this.players.length;
+        this.players.push({ faction: 'neutral', money: 0, buildings: [], units: [], color: '#8a8a8a', isAI: false, isNeutral: true, canLose: false, lowPowerNotified: false, startingBaseGranted: true });
+        this.players.forEach((player, index) => { player.owner = index; });
         this.currentPlayer = 0;
         this.matchStats = this.players.map(() => this.createEmptyPlayerStats());
         this.matchResult = null;
@@ -280,8 +305,11 @@ class GameState {
         this.lastTime = 0;
         this.waterFrame = 0;
         this.waterTimer = 0;
-        this.aiTimer = 0;
-        this.aiDecisionInterval = this.aiConfig.decisionMin + Math.random() * this.aiConfig.decisionRange;
+        this.aiState = this.players.map((player, index) => player.isAI ? {
+            owner: index,
+            timer: 0,
+            decisionInterval: this.aiConfig.decisionMin + Math.random() * this.aiConfig.decisionRange,
+        } : null);
         this.elapsedMs = 0;
 
         // Game over state
@@ -297,8 +325,9 @@ class GameState {
         // Build terrain in 3D
         this.renderer3d.buildTerrain(this.map, MAP_SIZE);
 
-        // Spawn bases for both players
-        this.mapProfile.spawnPoints.forEach((spawn, index) => this.spawnBase(index, spawn.x, spawn.y));
+        // Spawn bases for the human player plus configured AI opponents
+        const activeSpawnPoints = this.mapProfile.spawnPoints.slice(0, this.players.length - 1);
+        activeSpawnPoints.forEach((spawn, index) => this.spawnBase(index, spawn.x, spawn.y));
         this.spawnNeutralStructures();
 
         // Set initial camera on player base
@@ -479,9 +508,27 @@ class GameState {
         const reason = document.getElementById('match-summary-reason');
         const stats = document.getElementById('match-summary-stats');
         const playerStats = this.getPlayerStats(0);
-        const enemyStats = this.getPlayerStats(1);
+        const aiIndices = this.players
+            .map((player, index) => player?.isAI ? index : -1)
+            .filter(index => index >= 0);
+        const enemyStats = aiIndices.reduce((totals, owner) => {
+            const statsForPlayer = this.getPlayerStats(owner);
+            totals.unitsBuilt += statsForPlayer.unitsBuilt;
+            totals.unitsLost += statsForPlayer.unitsLost;
+            totals.unitsKilled += statsForPlayer.unitsKilled;
+            totals.buildingsConstructed += statsForPlayer.buildingsConstructed;
+            totals.buildingsLost += statsForPlayer.buildingsLost;
+            totals.buildingsDestroyed += statsForPlayer.buildingsDestroyed;
+            totals.oreDelivered += statsForPlayer.oreDelivered;
+            return totals;
+        }, this.createEmptyPlayerStats());
         const playerForces = this.getRemainingForces(this.players[0]);
-        const enemyForces = this.getRemainingForces(this.players[1]);
+        const enemyForces = aiIndices.reduce((totals, owner) => {
+            const forces = this.getRemainingForces(this.players[owner]);
+            totals.buildings += forces.buildings;
+            totals.units += forces.units;
+            return totals;
+        }, { buildings: 0, units: 0 });
 
         if (title) title.textContent = result.playerWon ? 'Victory' : 'Defeat';
         if (duration) duration.textContent = `Duration ${this.formatDuration(result.durationMs)}`;
@@ -505,7 +552,7 @@ class GameState {
                     <div class="summary-line"><span>Ore delivered</span><span>$${Math.floor(playerStats.oreDelivered)}</span></div>
                 </div>
                 <div class="summary-card enemy">
-                    <h3>Enemy Forces</h3>
+                    <h3>Enemy Coalition</h3>
                     <div class="summary-line"><span>Units built</span><span>${enemyStats.unitsBuilt}</span></div>
                     <div class="summary-line"><span>Units lost</span><span>${enemyStats.unitsLost}</span></div>
                     <div class="summary-line"><span>Units killed</span><span>${enemyStats.unitsKilled}</span></div>
@@ -536,7 +583,29 @@ class GameState {
             summaryText,
         };
         this.renderMatchSummary();
-        this.eva(playerWon ? 'VICTORY! Enemy base neutralized.' : 'DEFEAT! Your construction network has collapsed.');
+        this.eva(playerWon ? 'VICTORY! Enemy coalition neutralized.' : 'DEFEAT! Your construction network has collapsed.');
+    }
+
+    getEnemyPlayers(owner) {
+        return this.players.filter((player, index) => index !== owner && index !== this.neutralPlayerIndex && player?.canLose !== false && this.hasLivingBase(player));
+    }
+
+    getClosestEnemyPlayer(aiPlayer) {
+        if (!aiPlayer) return null;
+        const aiAnchor = aiPlayer.buildings[0]
+            ? this.getEntityAnchor(aiPlayer.buildings[0])
+            : this.getEntityAnchor(aiPlayer.units.find(unit => unit.state !== 'dead'));
+        const enemies = this.getEnemyPlayers(aiPlayer.owner ?? this.players.indexOf(aiPlayer));
+        if (!enemies.length) return null;
+        if (!aiAnchor) return enemies[0];
+        return enemies
+            .map(player => {
+                const anchor = player.buildings[0]
+                    ? this.getEntityAnchor(player.buildings[0])
+                    : this.getEntityAnchor(player.units.find(unit => unit.state !== 'dead'));
+                return { player, distance: anchor ? Math.hypot(anchor.x - aiAnchor.x, anchor.y - aiAnchor.y) : Infinity };
+            })
+            .sort((a, b) => a.distance - b.distance)[0]?.player || enemies[0];
     }
 
     resize() {
@@ -663,14 +732,14 @@ class GameState {
     }
 
     spawnNeutralStructures() {
-        const neutralPlayer = this.getPlayer(NEUTRAL_PLAYER_INDEX);
+        const neutralPlayer = this.getPlayer(this.neutralPlayerIndex);
         if (!neutralPlayer) return;
         const structures = this.mapProfile?.neutralStructures || [];
         for (const structure of structures) {
             if (!structure?.type || !this.canPlaceBuildingAt(structure.type, structure.x, structure.y)) continue;
-            const building = this.createBuilding(structure.type, structure.x, structure.y, NEUTRAL_PLAYER_INDEX, {
+            const building = this.createBuilding(structure.type, structure.x, structure.y, this.neutralPlayerIndex, {
                 isNeutralStructure: true,
-                neutralOwner: NEUTRAL_PLAYER_INDEX,
+                neutralOwner: this.neutralPlayerIndex,
             });
             neutralPlayer.buildings.push(building);
         }
@@ -3759,14 +3828,15 @@ class GameState {
         return assignments;
     }
 
-    updateAI(dt) {
-        this.aiTimer += dt;
-        if (this.aiTimer < this.aiDecisionInterval) return;
-        this.aiTimer = 0;
-        this.aiDecisionInterval = this.aiConfig.decisionMin + Math.random() * this.aiConfig.decisionRange;
-        this.elapsedMs = 0;
+    updateSingleAI(aiIndex, dt) {
+        const aiState = this.aiState?.[aiIndex];
+        if (!aiState) return;
+        aiState.timer += dt;
+        if (aiState.timer < aiState.decisionInterval) return;
+        aiState.timer = 0;
+        aiState.decisionInterval = this.aiConfig.decisionMin + Math.random() * this.aiConfig.decisionRange;
 
-        const ai = this.players[1];
+        const ai = this.players[aiIndex];
         if (!ai || (ai.buildings.length === 0 && ai.units.length === 0)) return;
         const undeployedMcv = ai.units.find(unit => unit.type === 'mcv' && unit.state !== 'dead');
         if (undeployedMcv && this.deployMCV(undeployedMcv, { auto: true })) {
@@ -3784,7 +3854,7 @@ class GameState {
             const pos = this._aiPickBuildPos(baseX, baseY, type);
             if (!pos) return false;
             ai.money -= def.cost;
-            const b = this.createBuilding(type, pos.x, pos.y, 1);
+            const b = this.createBuilding(type, pos.x, pos.y, aiIndex);
             b.built = false;
             b.buildProgress = 0;
             ai.buildings.push(b);
@@ -3822,7 +3892,8 @@ class GameState {
         const artilleryFactories = this.getProductionBuildings(ai, 'artillery');
         const apocalypseFactories = this.getProductionBuildings(ai, 'apocalypseTank');
         const airfields = this.getProductionBuildings(ai, 'harrier');
-        const enemyPlayer = this.players[0];
+        const enemyPlayer = this.getClosestEnemyPlayer(ai);
+        if (!enemyPlayer) return;
         const enemyHeavyUnits = enemyPlayer.units.filter(u => u.state !== 'dead' && u.armorType === 'heavy').length;
         const enemyAirUnits = enemyPlayer.units.filter(u => u.state !== 'dead' && this.isAirUnit(u)).length;
         const enemyAirPressure = this.getAirThreatPressure(enemyPlayer);
@@ -3980,6 +4051,13 @@ class GameState {
         }
     }
 
+    updateAI(dt) {
+        for (let aiIndex = 1; aiIndex < this.players.length; aiIndex++) {
+            if (!this.players[aiIndex]?.isAI) continue;
+            this.updateSingleAI(aiIndex, dt);
+        }
+    }
+
     _aiPickBuildPos(baseX, baseY, type) {
 
         const size = BUILD_TYPES[type].size;
@@ -4022,14 +4100,15 @@ class GameState {
     checkVictoryConditions() {
         if (this.gameOver) return;
 
-        for (let pi = 0; pi < this.players.length; pi++) {
-            const p = this.players[pi];
-            if (p?.canLose === false) continue;
-            const alive = this.hasLivingBase(p);
-            if (!alive) {
-                this.finishMatch(pi);
-                return;
-            }
+        const playerAlive = this.hasLivingBase(this.players[this.currentPlayer]);
+        if (!playerAlive) {
+            this.finishMatch(this.currentPlayer);
+            return;
+        }
+
+        const livingAIs = this.players.filter((player, index) => index !== this.currentPlayer && player?.isAI && this.hasLivingBase(player));
+        if (livingAIs.length === 0) {
+            this.finishMatch(1);
         }
     }
 
@@ -4797,6 +4876,7 @@ function bindSkirmishSetupPanel() {
         map: document.getElementById('setup-map'),
         playerFaction: document.getElementById('setup-player-faction'),
         aiDifficulty: document.getElementById('setup-ai-difficulty'),
+        aiPlayers: document.getElementById('setup-ai-players'),
         aiBuildOrder: document.getElementById('setup-ai-build-order'),
         gameSpeed: document.getElementById('setup-game-speed'),
     };
@@ -4808,6 +4888,7 @@ function bindSkirmishSetupPanel() {
         controls.map.value = normalized.map;
         controls.playerFaction.value = normalized.playerFaction;
         controls.aiDifficulty.value = normalized.aiDifficulty;
+        controls.aiPlayers.value = String(normalized.aiPlayers);
         controls.aiBuildOrder.value = normalized.aiBuildOrder;
         controls.gameSpeed.value = normalized.gameSpeed;
         updateSetupBriefing(normalized);
@@ -4818,6 +4899,7 @@ function bindSkirmishSetupPanel() {
         map: controls.map.value,
         playerFaction: controls.playerFaction.value,
         aiDifficulty: controls.aiDifficulty.value,
+        aiPlayers: controls.aiPlayers.value,
         aiBuildOrder: controls.aiBuildOrder.value,
         gameSpeed: controls.gameSpeed.value,
     });
