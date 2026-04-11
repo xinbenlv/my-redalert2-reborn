@@ -3866,7 +3866,7 @@ class GameState {
         return threats.sort((a, b) => b.priority - a.priority || a.distance - b.distance);
     }
 
-    getAIPriorityTarget(aiPlayer = this.players[1], enemyPlayer = this.players[0]) {
+    getAITargetPriorityDetails(aiPlayer = this.players[1], enemyPlayer = this.players[0]) {
         if (!aiPlayer || !enemyPlayer) return null;
         const candidates = [
             ...enemyPlayer.units.filter(u => u.state !== 'dead'),
@@ -3874,32 +3874,99 @@ class GameState {
         ];
         if (candidates.length === 0) return null;
 
+        const aiCombatUnits = aiPlayer.units.filter(unit => this.isCombatUnit(unit) && unit.state !== 'dead');
+        const enemyPowerStats = POWER_SYSTEM.calculate(enemyPlayer);
+        const enemyBuiltBuildings = enemyPlayer.buildings.filter(building => building.built && building.hp > 0);
+        const enemyHeavyVehicleCount = enemyPlayer.units.filter(unit => unit.state !== 'dead' && (unit.armorType === 'heavy' || unit.type === 'apocalypseTank')).length;
+        const enemyHarvesters = enemyPlayer.units.filter(unit => unit.state !== 'dead' && unit.role === 'harvester').length;
+        const enemyAirfields = enemyBuiltBuildings.filter(building => building.type === 'airfield');
+        const queuedHarriers = enemyAirfields.reduce((total, airfield) => {
+            let queued = 0;
+            if (airfield.training === 'harrier') queued += 1;
+            if (Array.isArray(airfield.trainQueue)) {
+                queued += airfield.trainQueue.filter(type => type === 'harrier').length;
+            }
+            return total + queued;
+        }, 0);
+        const liveHarriers = enemyPlayer.units.filter(unit => unit.state !== 'dead' && unit.type === 'harrier').length;
+
         const scoreTarget = target => {
             const isBuilding = target.tx !== undefined;
             const type = target.type || '';
             const role = target.role || '';
+            const reasons = [];
             let score = isBuilding ? 20 : 10;
 
-            if (type === 'harvester') score += 120;
-            else if (type === 'powerPlant') score += 80;
-            else if (type === 'battleLab') score += 85;
-            else if (type === 'warFactory') score += 70;
-            else if (type === 'refinery') score += 65;
-            else if (type === 'radarDome') score += 45;
-            else if (type === 'barracks') score += 35;
-            else if (type === 'apocalypseTank') score += 55;
-            else if (type === 'apc') score += 38;
-            else if (type === 'ifv') score += 42;
-            else if (type === 'flakTrack') score += 34;
-            else if (type === 'tank') score += 30;
-            else if (role === 'harvester') score += 120;
-            else if (role === 'engineer') score += 40;
-            else if (target.damage > 0) score += 25;
+            if (type === 'harvester' || role === 'harvester') {
+                score += 120;
+                reasons.push('harvester-raiding');
+            } else if (type === 'powerPlant') {
+                score += 80;
+            } else if (type === 'advancedPowerPlant') {
+                score += 88;
+            } else if (type === 'battleLab') {
+                score += 85;
+            } else if (type === 'warFactory') {
+                score += 70;
+            } else if (type === 'airfield') {
+                score += 78;
+            } else if (type === 'refinery') {
+                score += 65;
+            } else if (type === 'radarDome') {
+                score += 45;
+            } else if (type === 'barracks') {
+                score += 35;
+            } else if (type === 'apocalypseTank') {
+                score += 55;
+            } else if (type === 'apc') {
+                score += 38;
+            } else if (type === 'ifv') {
+                score += 42;
+            } else if (type === 'flakTrack') {
+                score += 34;
+            } else if (type === 'tank') {
+                score += 30;
+            } else if (role === 'engineer') {
+                score += 40;
+            } else if (target.damage > 0) {
+                score += 25;
+            }
+
+            if (isBuilding) {
+                const def = BUILD_TYPES[type] || {};
+                const powerSupply = def.powerSupply || 0;
+                const projectedProduced = enemyPowerStats.produced - powerSupply;
+                const wouldTriggerLowPower = powerSupply > 0 && enemyPowerStats.consumed > 0 && projectedProduced < enemyPowerStats.consumed;
+                const wouldCripplePowerMargin = powerSupply > 0 && enemyPowerStats.consumed > 0 && (projectedProduced - enemyPowerStats.consumed) <= 25;
+                if (wouldTriggerLowPower) {
+                    score += 120;
+                    reasons.push('power-sabotage');
+                } else if (wouldCripplePowerMargin) {
+                    score += 55;
+                    reasons.push('power-pressure');
+                }
+
+                if (type === 'battleLab') {
+                    const enemyTechPayload = enemyHeavyVehicleCount + enemyAirfields.length + liveHarriers + queuedHarriers;
+                    score += 30 + enemyTechPayload * 12;
+                    reasons.push('tech-snipe');
+                } else if (type === 'airfield') {
+                    const airPayload = liveHarriers + queuedHarriers;
+                    score += 40 + airPayload * 16;
+                    reasons.push('air-snipe');
+                } else if (type === 'warFactory' && enemyHeavyVehicleCount > 0) {
+                    score += 35 + enemyHeavyVehicleCount * 10;
+                    reasons.push('factory-bust');
+                } else if (type === 'refinery' && enemyHarvesters > 0) {
+                    score += 20 + enemyHarvesters * 8;
+                    reasons.push('eco-pressure');
+                }
+            }
 
             const targetAnchor = this.getEntityAnchor(target);
+            let nearestAIUnit = undefined;
             if (targetAnchor) {
-                const nearestAIUnit = aiPlayer.units
-                    .filter(u => this.isCombatUnit(u) && u.state !== 'dead')
+                nearestAIUnit = aiCombatUnits
                     .map(unit => {
                         const anchor = this.getEntityAnchor(unit);
                         if (!anchor) return null;
@@ -3912,11 +3979,26 @@ class GameState {
                 }
             }
 
-            score += Math.max(0, ((target.maxHp || target.hp || 0) - (target.hp || 0)) * 0.1);
-            return score;
+            const finishingBonus = Math.max(0, ((target.maxHp || target.hp || 0) - (target.hp || 0)) * 0.1);
+            if (finishingBonus > 0) reasons.push('finish-off');
+            score += finishingBonus;
+
+            return {
+                target,
+                score,
+                reasons,
+                nearestDistance: nearestAIUnit ?? null,
+                targetType: type || role || 'unknown'
+            };
         };
 
-        return candidates.sort((a, b) => scoreTarget(b) - scoreTarget(a))[0];
+        return candidates
+            .map(scoreTarget)
+            .sort((a, b) => b.score - a.score || (a.nearestDistance ?? Infinity) - (b.nearestDistance ?? Infinity))[0] || null;
+    }
+
+    getAIPriorityTarget(aiPlayer = this.players[1], enemyPlayer = this.players[0]) {
+        return this.getAITargetPriorityDetails(aiPlayer, enemyPlayer)?.target || null;
     }
 
     issueAIAttackOrder(units, target) {
