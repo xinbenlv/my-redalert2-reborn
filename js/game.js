@@ -13,6 +13,10 @@ const POWER_SYSTEM = window.POWER_SYSTEM;
 const MATCH_CONFIG_STORAGE_KEY = 'ra2reborn.matchConfig';
 const MATCH_PANEL_COLLAPSED_KEY = 'ra2reborn.setupCollapsed';
 const OPENING_AUTO_DEPLOY_MS = 250;
+const HARVESTER_RETREAT_RECENT_HIT_MS = 3200;
+const HARVESTER_RETREAT_HEALTH_RATIO = 0.55;
+const HARVESTER_RETREAT_THREAT_RADIUS = 6.5;
+const HARVESTER_RETREAT_SAFE_HOLD_MS = 1800;
 const MAP_PROFILES = {
     classic: {
         id: 'classic',
@@ -2196,6 +2200,7 @@ class GameState {
     }
 
     assignHarvesterJob(unit, player) {
+        unit.evadeUntil = 0;
         const refinery = this.findNearestRefinery(player, unit);
         if (!refinery) {
             unit.state = 'idle';
@@ -2219,11 +2224,99 @@ class GameState {
         this.issueMoveOrder(unit, ore.x, ore.y, 'movingToOre');
     }
 
+    getHarvesterThreat(unit) {
+        if (!unit || unit.state === 'dead') return null;
+        const recentHit = unit._lastHitTime && Date.now() - unit._lastHitTime <= HARVESTER_RETREAT_RECENT_HIT_MS;
+        const recentAttacker = recentHit && unit._lastAttackerUnit && unit._lastAttackerUnit.state !== 'dead'
+            ? unit._lastAttackerUnit
+            : null;
+        const nearbyEnemy = this._findNearestEnemy(unit, unit.owner);
+        const nearbyDistance = nearbyEnemy ? Math.hypot(
+            unit.x - (nearbyEnemy.x !== undefined ? nearbyEnemy.x : nearbyEnemy.tx + nearbyEnemy.size / 2 - 0.5),
+            unit.y - (nearbyEnemy.y !== undefined ? nearbyEnemy.y : nearbyEnemy.ty + nearbyEnemy.size / 2 - 0.5)
+        ) : Infinity;
+        const badlyDamaged = unit.hp / unit.maxHp <= HARVESTER_RETREAT_HEALTH_RATIO;
+
+        if (recentAttacker) {
+            const recentDistance = Math.hypot(
+                unit.x - (recentAttacker.x !== undefined ? recentAttacker.x : recentAttacker.tx + recentAttacker.size / 2 - 0.5),
+                unit.y - (recentAttacker.y !== undefined ? recentAttacker.y : recentAttacker.ty + recentAttacker.size / 2 - 0.5)
+            );
+            if (recentDistance <= HARVESTER_RETREAT_THREAT_RADIUS || badlyDamaged) {
+                return { enemy: recentAttacker, distance: recentDistance, recentHit: true };
+            }
+        }
+
+        if (nearbyEnemy && nearbyDistance <= HARVESTER_RETREAT_THREAT_RADIUS && badlyDamaged) {
+            return { enemy: nearbyEnemy, distance: nearbyDistance, recentHit };
+        }
+
+        return null;
+    }
+
+    updateHarvesterRetreat(unit, player, dt) {
+        if (!unit || unit.state === 'dead') return false;
+        const refinery = unit.returnRefinery || this.findNearestRefinery(player, unit);
+        const threat = this.getHarvesterThreat(unit);
+        if (threat && refinery) {
+            const targetX = refinery.tx + refinery.size / 2 - 0.5;
+            const targetY = refinery.ty + refinery.size / 2 - 0.5;
+            unit.returnRefinery = refinery;
+            unit.oreTarget = null;
+            unit.harvestTimer = 0;
+            unit.evadeUntil = Math.max(unit.evadeUntil || 0, Date.now() + HARVESTER_RETREAT_SAFE_HOLD_MS);
+            const needsOrder = unit.state !== 'evadingToRefinery'
+                || !unit.target
+                || Math.hypot(unit.target.x - targetX, unit.target.y - targetY) > 0.25;
+            if (needsOrder) this.issueMoveOrder(unit, targetX, targetY, 'evadingToRefinery');
+        }
+
+        if (unit.state !== 'evadingToRefinery') return false;
+
+        const targetX = unit.returnRefinery ? unit.returnRefinery.tx + unit.returnRefinery.size / 2 - 0.5 : unit.x;
+        const targetY = unit.returnRefinery ? unit.returnRefinery.ty + unit.returnRefinery.size / 2 - 0.5 : unit.y;
+        let dist = Math.hypot(unit.x - targetX, unit.y - targetY);
+        if (dist > 1.75) {
+            const finished = this.moveUnitAlongPath(unit, dt);
+            if (!finished) return true;
+            dist = Math.hypot(unit.x - targetX, unit.y - targetY);
+        }
+
+        if (unit.cargo > 0 && unit.returnRefinery && dist <= 1.75) {
+            unit.state = 'unloading';
+            unit.unloadTimer += dt;
+            if (unit.unloadTimer >= unit.unloadInterval) {
+                unit.unloadTimer = 0;
+                const amount = Math.min(unit.unloadRate, unit.cargo);
+                unit.cargo -= amount;
+                player.money += amount;
+                this.recordOreDelivered(unit.owner, amount);
+            }
+            if (unit.cargo < 0) unit.cargo = 0;
+        }
+
+        const holdActive = (unit.evadeUntil || 0) > Date.now();
+        if (this.getHarvesterThreat(unit) || holdActive) {
+            unit.target = null;
+            unit.path = null;
+            unit.pathIdx = 0;
+            unit.state = 'evadingToRefinery';
+            return true;
+        }
+
+        unit.returnRefinery = null;
+        unit.evadeUntil = 0;
+        this.assignHarvesterJob(unit, player);
+        return true;
+    }
+
     updateHarvesterUnit(unit, player, dt) {
         if (unit.state === 'dead') {
             unit.deadTimer += dt;
             return;
         }
+
+        if (this.updateHarvesterRetreat(unit, player, dt)) return;
 
         if (!unit.target && !unit.oreTarget && unit.cargo === 0 && unit.state === 'idle') {
             this.assignHarvesterJob(unit, player);
