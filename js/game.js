@@ -853,6 +853,64 @@ class GameState {
         unit.pathIdx = unit.path && unit.path.length > 1 && Math.hypot(unit.path[0].x - unit.x, unit.path[0].y - unit.y) < 0.5 ? 1 : 0;
     }
 
+    getEntityAnchor(entity) {
+        if (!entity) return null;
+        if (entity.tx !== undefined) {
+            return {
+                x: entity.tx + entity.size / 2 - 0.5,
+                y: entity.ty + entity.size / 2 - 0.5
+            };
+        }
+        return { x: entity.x, y: entity.y };
+    }
+
+    getSelectedRallyOverlay() {
+        const building = this.getPrimarySelectedBuilding();
+        if (!building || !this.canSetRallyPoint(building)) return null;
+        const source = this.getEntityAnchor(building);
+        const target = this.commandMode === 'set-rally'
+            ? { x: this.hoverTile.x, y: this.hoverTile.y }
+            : building.rallyPoint;
+        if (!source || !target) return null;
+        return {
+            kind: 'rally',
+            active: this.commandMode === 'set-rally',
+            source,
+            target,
+            label: this.commandMode === 'set-rally' ? 'RALLY PREVIEW' : 'RALLY'
+        };
+    }
+
+    getSelectedOrderOverlays() {
+        const overlays = [];
+        for (const unit of this.selected) {
+            if (!this.canUnitReceiveCommand(unit)) continue;
+
+            const anchor = this.getEntityAnchor(unit);
+            if (!anchor) continue;
+
+            const pathPoints = [anchor];
+            if (unit.path && unit.pathIdx < unit.path.length) {
+                for (let i = unit.pathIdx; i < unit.path.length; i++) {
+                    pathPoints.push({ x: unit.path[i].x, y: unit.path[i].y });
+                }
+            } else if (unit.target) {
+                pathPoints.push({ x: unit.target.x, y: unit.target.y });
+            }
+
+            const finalPoint = pathPoints[pathPoints.length - 1];
+            if (!finalPoint || pathPoints.length < 2) continue;
+
+            overlays.push({
+                kind: unit.attackTarget ? 'attack' : 'move',
+                unit,
+                path: pathPoints,
+                target: finalPoint
+            });
+        }
+        return overlays;
+    }
+
     moveUnitAlongPath(unit, dt) {
         let targetX, targetY;
         if (unit.path && unit.pathIdx < unit.path.length) {
@@ -1769,6 +1827,9 @@ class GameState {
         const selectedSet = new Set(this.selected);
         this.renderer3d.drawHealthBars2D(this.overlayCtx, this.players, selectedSet);
 
+        // Rally / movement overlays for selected entities
+        this._drawOrderOverlays(this.overlayCtx);
+
         // Command ping effects
         this._drawCommandPings(this.overlayCtx, dt);
 
@@ -1875,6 +1936,108 @@ class GameState {
             ctx.stroke();
             ctx.globalAlpha = 1;
         }
+    }
+
+    _drawOrderOverlays(ctx) {
+        const rallyOverlay = this.getSelectedRallyOverlay();
+        if (rallyOverlay) {
+            this._drawOverlayPath(ctx, [rallyOverlay.source, rallyOverlay.target], {
+                color: rallyOverlay.active ? '#66ddff' : '#00aaff',
+                dashed: true,
+                width: rallyOverlay.active ? 2.5 : 2
+            });
+            this._drawOverlayMarker(ctx, rallyOverlay.target, {
+                color: rallyOverlay.active ? '#66ddff' : '#00aaff',
+                label: rallyOverlay.label,
+                style: 'diamond'
+            });
+        }
+
+        const orderOverlays = this.getSelectedOrderOverlays();
+        for (const overlay of orderOverlays.slice(0, 10)) {
+            const isAttack = overlay.kind === 'attack';
+            this._drawOverlayPath(ctx, overlay.path, {
+                color: isAttack ? '#ff5a36' : '#00ff88',
+                dashed: true,
+                width: 1.5,
+                alpha: 0.75
+            });
+            this._drawOverlayMarker(ctx, overlay.target, {
+                color: isAttack ? '#ff5a36' : '#00ff88',
+                label: isAttack ? 'ATTACK' : 'MOVE',
+                style: isAttack ? 'crosshair' : 'ring',
+                alpha: 0.85
+            });
+        }
+    }
+
+    _drawOverlayPath(ctx, points, options = {}) {
+        if (!points || points.length < 2) return;
+        const screens = points.map(point => this.renderer3d.tileToScreen(point.x, point.y));
+        ctx.save();
+        ctx.strokeStyle = options.color || '#00ff88';
+        ctx.lineWidth = options.width || 2;
+        ctx.globalAlpha = options.alpha ?? 1;
+        if (options.dashed) ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(screens[0].x, screens[0].y);
+        for (let i = 1; i < screens.length; i++) {
+            ctx.lineTo(screens[i].x, screens[i].y);
+        }
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    _drawOverlayMarker(ctx, point, options = {}) {
+        const screen = this.renderer3d.tileToScreen(point.x, point.y);
+        const color = options.color || '#00ff88';
+        const alpha = options.alpha ?? 1;
+        const style = options.style || 'ring';
+        const radius = options.radius || 10;
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.lineWidth = 2;
+
+        if (style === 'diamond') {
+            ctx.beginPath();
+            ctx.moveTo(screen.x, screen.y - radius);
+            ctx.lineTo(screen.x + radius, screen.y);
+            ctx.lineTo(screen.x, screen.y + radius);
+            ctx.lineTo(screen.x - radius, screen.y);
+            ctx.closePath();
+            ctx.stroke();
+        } else if (style === 'crosshair') {
+            ctx.beginPath();
+            ctx.arc(screen.x, screen.y, radius, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(screen.x - radius - 4, screen.y);
+            ctx.lineTo(screen.x + radius + 4, screen.y);
+            ctx.moveTo(screen.x, screen.y - radius - 4);
+            ctx.lineTo(screen.x, screen.y + radius + 4);
+            ctx.stroke();
+        } else {
+            ctx.beginPath();
+            ctx.arc(screen.x, screen.y, radius, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(screen.x, screen.y, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        if (options.label) {
+            ctx.font = 'bold 10px Courier New';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#ffffff';
+            ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+            ctx.lineWidth = 3;
+            ctx.strokeText(options.label, screen.x, screen.y - radius - 8);
+            ctx.fillText(options.label, screen.x, screen.y - radius - 8);
+        }
+        ctx.restore();
     }
 
     renderMinimap() {
@@ -2144,9 +2307,13 @@ class GameState {
                 const cancelQueueButton = s.trainQueue?.length
                     ? `<button class="selection-action" data-action="cancel-queue">Cancel Queue</button>`
                     : '';
+                const rallyHint = this.canSetRallyPoint(s)
+                    ? `<div class="selection-hint">${this.commandMode === 'set-rally' ? 'Right-click any visible tile to place the rally marker.' : 'Select Rally to preview the route and marker.'}</div>`
+                    : '';
                 info.innerHTML = `<div style="color:#ffd700">${this.getDisplayName(s.type)}</div>
                     <div>HP: ${Math.floor(s.hp)}/${s.maxHp}</div>
                     ${statusBits.map(bit => `<div>${bit}</div>`).join('')}
+                    ${rallyHint}
                     <div class="selection-actions">${repairButton}${sellButton}${cancelBuildButton}${cancelCurrentButton}${cancelQueueButton}${rallyButton}</div>`;
             }
         } else {

@@ -43,6 +43,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font
 .selection-action.active { background: rgba(0,170,255,0.2); border-color: #00aaff; color: #d7f4ff; }
 .selection-action.danger { border-color: #a33; color: #ffb4b4; }
 .selection-action:disabled { opacity: 0.45; cursor: not-allowed; }
+.selection-hint { margin-top: 6px; color: #8bdcff; font-size: 10px; line-height: 1.3; }
 #eva-message { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); color: #00ff88; font-size: 16px; font-weight: bold; text-shadow: 0 0 10px #00ff88; opacity: 0; transition: opacity 0.5s; pointer-events: none; }
 #eva-message.show { opacity: 1; }
 #version-info { position: fixed; bottom: 12px; left: 12px; color: rgba(255,255,255,0.6); font-size: 11px; font-family: 'Courier New', monospace; pointer-events: none; z-index: 9999; text-shadow: 0 1px 3px rgba(0,0,0,0.8), 0 0 6px rgba(0,0,0,0.5); background: rgba(0,0,0,0.3); padding: 2px 8px; border-radius: 4px; }
