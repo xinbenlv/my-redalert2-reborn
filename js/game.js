@@ -842,6 +842,7 @@ class GameState {
             deadTimer: 0,
             path: null,
             pathIdx: 0,
+            waypointQueue: [],
             patrolRoute: null,
             patrolIndex: 0,
             _walkPhase: 0,
@@ -853,7 +854,8 @@ class GameState {
             veterancyRank: 'rookie',
             stance: 'guard',
             stanceAnchor: { x: tx, y: ty },
-            forceMove: false
+            forceMove: false,
+            _savedWaypointQueue: []
         };
     }
 
@@ -1538,6 +1540,8 @@ class GameState {
                 u.target = null;
                 u.state = 'attacking';
                 u.forceMove = false;
+                u.waypointQueue = [];
+                u._savedWaypointQueue = [];
                 u.path = this.isAirUnit(u) ? null : this.findPath(Math.round(u.x), Math.round(u.y), Math.floor(enemyUnit.x), Math.floor(enemyUnit.y));
                 u.pathIdx = 0;
                 issuedAttack = true;
@@ -1565,6 +1569,8 @@ class GameState {
                 u.target = null;
                 u.state = 'attacking';
                 u.forceMove = false;
+                u.waypointQueue = [];
+                u._savedWaypointQueue = [];
                 u.path = this.isAirUnit(u) ? null : this.findPath(Math.round(u.x), Math.round(u.y), enemyBuilding.tx + 1, enemyBuilding.ty + 1);
                 u.pathIdx = 0;
                 issuedOrder = true;
@@ -1582,26 +1588,35 @@ class GameState {
                 issuedUnload = this.orderTransportUnload(u, tile.x, tile.y) || issuedUnload;
             }
         }
-        for (const u of this.selected) {
+        const queueMove = !!e.shiftKey;
+        let queuedWaypoint = false;
+        for (const [index, u] of this.selected.entries()) {
             if (!this.canUnitReceiveCommand(u)) continue;
             if (this.isTransportUnit(u) && u.passengers?.length) continue;
+            const angle = this.selected.length > 1 ? (Math.PI * 2 * index) / this.selected.length : 0;
+            const radius = this.selected.length > 1 ? Math.min(0.9, 0.28 * this.selected.length) : 0;
+            const tx = Math.max(0.5, Math.min(MAP_SIZE - 0.5, tile.x + Math.cos(angle) * radius));
+            const ty = Math.max(0.5, Math.min(MAP_SIZE - 0.5, tile.y + Math.sin(angle) * radius));
+            if (queueMove) {
+                queuedWaypoint = this.queueMoveWaypoint(u, tx, ty) || queuedWaypoint;
+                continue;
+            }
             u.captureTarget = null;
             u.transportTarget = null;
-            u.target = { x: tile.x, y: tile.y };
-            u.attackTarget = null;
             u._savedTarget = null;
             u._savedPath = null;
-            u.state = 'moving';
-            const sx = Math.round(u.x), sy = Math.round(u.y);
-            u.path = this.findPath(sx, sy, tile.x, tile.y);
-            // Skip first waypoint if it's the start position (avoid walking backward)
-            if (u.path && u.path.length > 1 && Math.hypot(u.path[0].x - u.x, u.path[0].y - u.y) < 0.5) {
-                u.pathIdx = 1;
-            } else {
-                u.pathIdx = 0;
-            }
+            u._savedPathIdx = 0;
+            u._savedWaypointQueue = [];
+            this.issueMoveOrder(u, tx, ty);
         }
-        this.commandPings.push({ tx: tile.x, ty: tile.y, color: issuedUnload ? '#00c8ff' : '#00ff88', time: 0 });
+        this.commandPings.push({ tx: tile.x, ty: tile.y, color: issuedUnload ? '#00c8ff' : (queueMove ? '#66d9ff' : '#00ff88'), time: 0 });
+        if (queuedWaypoint) {
+            const commandableUnits = this.getSelectedCommandableUnits();
+            if (commandableUnits.length) {
+                this.eva(commandableUnits.length === 1 ? `${this.getDisplayName(commandableUnits[0].type)} waypoint queued.` : `${commandableUnits.length} units queued a waypoint.`);
+            }
+            this.updateSelectionInfo();
+        }
     }
 
     _updateCursor(tile) {
@@ -1790,9 +1805,11 @@ class GameState {
             unit.target = unit._savedTarget;
             unit.path = unit._savedPath;
             unit.pathIdx = unit._savedPathIdx || 0;
+            unit.waypointQueue = [...(unit._savedWaypointQueue || [])];
             unit._savedTarget = null;
             unit._savedPath = null;
             unit._savedPathIdx = 0;
+            unit._savedWaypointQueue = [];
             unit.state = 'moving';
             return true;
         }
@@ -1836,6 +1853,8 @@ class GameState {
         unit._savedTarget = null;
         unit._savedPath = null;
         unit._savedPathIdx = 0;
+        unit._savedWaypointQueue = [];
+        unit.waypointQueue = [];
         unit.patrolRoute = null;
         unit.patrolIndex = 0;
         unit.forceMove = false;
@@ -1918,6 +1937,41 @@ class GameState {
         if (!this.canUnitReceiveCommand(unit)) return false;
         this.clearUnitOrders(unit);
         this.issueMoveOrder(unit, tx, ty, 'moving', { forceMove: true });
+        return true;
+    }
+
+    getQueuedMoveAnchor(unit) {
+        if (unit?.waypointQueue?.length) return unit.waypointQueue[unit.waypointQueue.length - 1];
+        if (unit?.target && (unit.state === 'moving' || unit.state === 'engaging')) {
+            return { x: unit.target.x, y: unit.target.y, forceMove: !!unit.forceMove };
+        }
+        return unit ? { x: unit.x, y: unit.y, forceMove: false } : null;
+    }
+
+    queueMoveWaypoint(unit, tx, ty, options = {}) {
+        if (!this.canUnitReceiveCommand(unit)) return false;
+        const anchor = this.getQueuedMoveAnchor(unit);
+        if (anchor && Math.hypot(anchor.x - tx, anchor.y - ty) < 0.35) return false;
+        const queuedWaypoint = { x: tx, y: ty, forceMove: !!options.forceMove };
+        const hasActiveMove = unit.target && (unit.state === 'moving' || unit.state === 'engaging') && !unit.attackTarget;
+        if (!hasActiveMove) {
+            this.clearUnitOrders(unit);
+            this.issueMoveOrder(unit, tx, ty, 'moving', { forceMove: !!options.forceMove, preserveWaypoints: true });
+            unit.waypointQueue = [];
+            return true;
+        }
+        unit.waypointQueue.push(queuedWaypoint);
+        return true;
+    }
+
+    advanceQueuedMove(unit) {
+        if (!unit?.waypointQueue?.length) return false;
+        const nextWaypoint = unit.waypointQueue.shift();
+        if (!nextWaypoint) return false;
+        this.issueMoveOrder(unit, nextWaypoint.x, nextWaypoint.y, 'moving', {
+            forceMove: !!nextWaypoint.forceMove,
+            preserveWaypoints: true
+        });
         return true;
     }
 
@@ -2374,6 +2428,7 @@ class GameState {
             unit.patrolRoute = null;
             unit.patrolIndex = 0;
         }
+        if (!options.preserveWaypoints) unit.waypointQueue = [];
         unit.forceMove = !!options.forceMove;
         if (this.isAirUnit(unit)) {
             unit.path = null;
@@ -3451,6 +3506,7 @@ class GameState {
                                 u._savedTarget = u.target;
                                 u._savedPath = u.path;
                                 u._savedPathIdx = u.pathIdx;
+                                u._savedWaypointQueue = [...(u.waypointQueue || [])];
                                 u.attackTarget = nearbyEnemy;
                                 u.state = 'engaging'; // special state: auto-engaged during move
                                 u.target = null;
@@ -3491,6 +3547,8 @@ class GameState {
                             u.pathIdx++;
                         } else if (u.state === 'patrolling' && u.patrolRoute?.length >= 2) {
                             this.advancePatrolRoute(u);
+                        } else if (u.waypointQueue?.length) {
+                            this.advanceQueuedMove(u);
                         } else {
                             u.state = 'idle';
                             u.target = null;
@@ -3510,9 +3568,6 @@ class GameState {
                     const at = u.attackTarget;
                     if (!at || (at.hp !== undefined && at.hp <= 0) || at.state === 'dead' || !this.canEntityTarget(u, at)) {
                         u.attackTarget = null;
-                        u._savedTarget = null;
-                        u._savedPath = null;
-                        u._savedPathIdx = null;
                         this.resumeUnitPostEngagement(u);
                         continue;
                     }
@@ -3531,14 +3586,8 @@ class GameState {
                     } else if (this.shouldUnitKeepPursuing(u, at)) {
                         // Enemy moved out of range — chase them if the current stance allows it
                         u.state = 'attacking';
-                        u._savedTarget = null;
-                        u._savedPath = null;
-                        u._savedPathIdx = null;
                     } else {
                         u.attackTarget = null;
-                        u._savedTarget = null;
-                        u._savedPath = null;
-                        u._savedPathIdx = null;
                         this.resumeUnitPostEngagement(u);
                     }
                     continue;
@@ -4918,10 +4967,10 @@ class GameState {
                     : '';
                 info.innerHTML = `<div style="color:#00ff88">${this.getDisplayName(s.type)}</div>
                     <div>HP: ${Math.floor(s.hp)}/${s.maxHp}</div>
-                    <div>${[...extras, `STANCE: ${this.getUnitStanceLabel(s).toUpperCase()}`, ...(s.forceMove ? ['ORDER: FORCE MOVE'] : []), ...(s.patrolRoute?.length === 2 ? [`PATROL: ${Math.round(s.patrolRoute[0].x)}, ${Math.round(s.patrolRoute[0].y)} ⇄ ${Math.round(s.patrolRoute[1].x)}, ${Math.round(s.patrolRoute[1].y)}`] : [])].join(' | ')}</div>
+                    <div>${[...extras, `STANCE: ${this.getUnitStanceLabel(s).toUpperCase()}`, ...(s.forceMove ? ['ORDER: FORCE MOVE'] : []), ...(s.waypointQueue?.length ? [`WAYPOINTS: ${s.waypointQueue.length} queued`] : []), ...(s.patrolRoute?.length === 2 ? [`PATROL: ${Math.round(s.patrolRoute[0].x)}, ${Math.round(s.patrolRoute[0].y)} ⇄ ${Math.round(s.patrolRoute[1].x)}, ${Math.round(s.patrolRoute[1].y)}`] : [])].join(' | ')}</div>
                     ${veterancyBits.length ? `<div style="color:#ffd36b">${veterancyBits.join(' | ')}</div>` : ''}
                     <div style="color:#666;font-size:9px">${s.state}</div>
-                    ${(deployButton || unloadButton || commandButtons) ? `<div class="selection-actions">${deployButton}${unloadButton}${commandButtons}</div><div class="selection-hint">${this.commandMode === 'set-patrol' ? 'Right-click any visible tile to place the patrol turn-around point.' : (this.commandMode === 'set-force-move' ? 'Right-click any tile or enemy to move through without auto-engaging.' : 'Stop cancels the current order. Scatter sends the selection to nearby offsets. Force Move ignores en-route auto-engage until arrival. Patrol loops between the current position and a chosen tile. Stances: Guard / Aggressive / Hold Ground. Hotkeys: S / X / F / P / G / A / H.')}</div>` : ''}`;
+                    ${(deployButton || unloadButton || commandButtons) ? `<div class="selection-actions">${deployButton}${unloadButton}${commandButtons}</div><div class="selection-hint">${this.commandMode === 'set-patrol' ? 'Right-click any visible tile to place the patrol turn-around point.' : (this.commandMode === 'set-force-move' ? 'Right-click any tile or enemy to move through without auto-engaging.' : 'Stop cancels the current order. Scatter sends the selection to nearby offsets. Shift+right-click queues waypoints. Force Move ignores en-route auto-engage until arrival. Patrol loops between the current position and a chosen tile. Stances: Guard / Aggressive / Hold Ground. Hotkeys: S / X / F / P / G / A / H.')}</div>` : ''}`;
             } else {
                 const def = BUILD_TYPES[s.type];
                 const statusBits = [];
@@ -4984,7 +5033,7 @@ class GameState {
                 <div style="color:#ffd36b">${veterans} veteran | ${elites} elite</div>
                 <div>Stance: ${stanceLabel}</div>
                 <div style="color:#666;font-size:9px">Right-click commands apply to combat units only</div>
-                ${commandableUnits.length ? `<div class="selection-actions"><button class="selection-action" data-action="stop">Stop</button><button class="selection-action" data-action="scatter">Scatter</button><button class="selection-action ${this.commandMode === 'set-force-move' ? 'active' : ''}" data-action="force-move">${this.commandMode === 'set-force-move' ? 'Placing Force Move' : 'Force Move'}</button><button class="selection-action ${this.commandMode === 'set-patrol' ? 'active' : ''}" data-action="patrol">${this.commandMode === 'set-patrol' ? 'Placing Patrol' : 'Patrol'}</button>${stanceButtons}</div><div class="selection-hint">${this.commandMode === 'set-patrol' ? 'Right-click any visible tile to place the patrol turn-around point.' : (this.commandMode === 'set-force-move' ? 'Right-click any tile or enemy to move through without auto-engaging.' : 'Stop cancels the current order. Scatter fans the group into nearby positions. Force Move ignores en-route auto-engage until arrival. Patrol loops between the current position and a chosen tile. Stances: Guard / Aggressive / Hold Ground. Hotkeys: S / X / F / P / G / A / H.')}</div>` : ''}`;
+                ${commandableUnits.length ? `<div class="selection-actions"><button class="selection-action" data-action="stop">Stop</button><button class="selection-action" data-action="scatter">Scatter</button><button class="selection-action ${this.commandMode === 'set-force-move' ? 'active' : ''}" data-action="force-move">${this.commandMode === 'set-force-move' ? 'Placing Force Move' : 'Force Move'}</button><button class="selection-action ${this.commandMode === 'set-patrol' ? 'active' : ''}" data-action="patrol">${this.commandMode === 'set-patrol' ? 'Placing Patrol' : 'Patrol'}</button>${stanceButtons}</div><div class="selection-hint">${this.commandMode === 'set-patrol' ? 'Right-click any visible tile to place the patrol turn-around point.' : (this.commandMode === 'set-force-move' ? 'Right-click any tile or enemy to move through without auto-engaging.' : 'Stop cancels the current order. Scatter fans the group into nearby positions. Shift+right-click queues waypoints. Force Move ignores en-route auto-engage until arrival. Patrol loops between the current position and a chosen tile. Stances: Guard / Aggressive / Hold Ground. Hotkeys: S / X / F / P / G / A / H.')}</div>` : ''}`;
         }
     }
 

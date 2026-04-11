@@ -170,7 +170,7 @@
 - [x] stance（guard / aggressive / hold ground，已补选择面板按钮 + G/A/H 快捷键，并让 Guard / Aggressive / Hold Ground 真正影响索敌半径与追击 leash）
 - [~] force move / force fire / guard 等命令（已补 Force Move 选择面板按钮与 F 快捷键，并支持对敌方所在格执行穿越式移动、沿途忽略自动交战；force fire / guard 命令仍未完成）
 - [~] scatter / stop 命令（已补 Stop / Scatter / Force Move / Patrol 选择面板按钮与 S / X / F / P 快捷键；更完整的 force-fire / 阵型微操仍未做）
-- [ ] waypoints
+- [x] waypoints（已补 Shift+右键移动路径队列，队列会在自动交战后恢复并继续执行）
 - [x] patrol
 - [ ] 单位编队逻辑更像 RTS
 - [ ] 载具碾压步兵
