@@ -10,6 +10,7 @@ test('skirmish setup applies selected credits, map, faction, and difficulty befo
   await page.selectOption('#setup-map', 'crossroads');
   await page.selectOption('#setup-player-faction', 'allied');
   await page.selectOption('#setup-ai-difficulty', 'hard');
+  await page.selectOption('#setup-ai-build-order', 'air');
   await page.click('#skirmish-start-button');
 
   await page.waitForFunction(() => Boolean((window as any).game));
@@ -23,6 +24,8 @@ test('skirmish setup applies selected credits, map, faction, and difficulty befo
       aiMoney: game.players[1].money,
       playerFaction: game.players[0].faction,
       aiDifficulty: game.aiConfig?.difficulty,
+      aiBuildOrder: game.aiConfig?.buildOrder,
+      aiBuildOrderLabel: game.players[1]?.aiBuildOrderLabel,
       mapProfile: game.mapProfile?.id,
       title: document.getElementById('game-title')?.textContent,
       briefing: document.getElementById('setup-briefing')?.textContent,
@@ -34,9 +37,12 @@ test('skirmish setup applies selected credits, map, faction, and difficulty befo
   expect(applied.aiMoney).toBe(10000);
   expect(applied.playerFaction).toBe('allied');
   expect(applied.aiDifficulty).toBe('hard');
+  expect(applied.aiBuildOrder).toBe('air');
+  expect(applied.aiBuildOrderLabel).toBe('Air Supremacy');
   expect(applied.mapProfile).toBe('crossroads');
   expect(applied.title).toContain('CROSSROADS');
   expect(applied.briefing).toContain('HARD');
+  expect(applied.briefing).toContain('AIR SUPREMACY');
 });
 
 test('skirmish setup exposes twin rivers and boots the distinct battlefield layout', async ({ page }) => {

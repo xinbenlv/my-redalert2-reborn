@@ -42,6 +42,57 @@ const DEFAULT_MATCH_CONFIG = {
     map: 'classic',
     playerFaction: 'soviet',
     aiDifficulty: 'medium',
+    aiBuildOrder: 'balanced',
+};
+const AI_BUILD_ORDER_PROFILES = {
+    balanced: {
+        buildOrder: 'balanced',
+        label: 'Balanced Pressure',
+        prioritizeAirfield: false,
+        prioritizeBattleLab: true,
+        desiredPowerPlants: 2,
+        desiredPillboxes: 1,
+        desiredSentryGuns: 1,
+        desiredHarriers: 2,
+        desiredArtilleryBias: 0,
+        attackThresholdDelta: 0,
+    },
+    armor: {
+        buildOrder: 'armor',
+        label: 'Armor Spearhead',
+        prioritizeAirfield: false,
+        prioritizeBattleLab: true,
+        desiredPowerPlants: 2,
+        desiredPillboxes: 1,
+        desiredSentryGuns: 1,
+        desiredHarriers: 1,
+        desiredArtilleryBias: 0,
+        attackThresholdDelta: -1,
+    },
+    air: {
+        buildOrder: 'air',
+        label: 'Air Supremacy',
+        prioritizeAirfield: true,
+        prioritizeBattleLab: false,
+        desiredPowerPlants: 2,
+        desiredPillboxes: 1,
+        desiredSentryGuns: 1,
+        desiredHarriers: 4,
+        desiredArtilleryBias: 0,
+        attackThresholdDelta: 0,
+    },
+    fortified: {
+        buildOrder: 'fortified',
+        label: 'Fortified Grind',
+        prioritizeAirfield: false,
+        prioritizeBattleLab: true,
+        desiredPowerPlants: 3,
+        desiredPillboxes: 2,
+        desiredSentryGuns: 2,
+        desiredHarriers: 2,
+        desiredArtilleryBias: 1,
+        attackThresholdDelta: 1,
+    },
 };
 const VETERANCY_THRESHOLDS = {
     veteran: 80,
@@ -60,11 +111,13 @@ function normalizeMatchConfig(config = {}) {
     const map = MAP_PROFILES[config.map] ? config.map : DEFAULT_MATCH_CONFIG.map;
     const playerFaction = config.playerFaction === 'allied' ? 'allied' : 'soviet';
     const aiDifficulty = ['easy', 'medium', 'hard'].includes(config.aiDifficulty) ? config.aiDifficulty : DEFAULT_MATCH_CONFIG.aiDifficulty;
+    const aiBuildOrder = AI_BUILD_ORDER_PROFILES[config.aiBuildOrder] ? config.aiBuildOrder : DEFAULT_MATCH_CONFIG.aiBuildOrder;
     return {
         startingCredits: [5000, 6500, 10000].includes(startingCredits) ? startingCredits : DEFAULT_MATCH_CONFIG.startingCredits,
         map,
         playerFaction,
         aiDifficulty,
+        aiBuildOrder,
     };
 }
 
@@ -100,12 +153,27 @@ function getAIDifficultyProfile(difficulty) {
     return profiles[difficulty] || profiles.medium;
 }
 
+function getAIBuildOrderProfile(buildOrder) {
+    return AI_BUILD_ORDER_PROFILES[buildOrder] || AI_BUILD_ORDER_PROFILES.balanced;
+}
+
+function getAIProfile(matchConfig) {
+    const difficultyProfile = getAIDifficultyProfile(matchConfig.aiDifficulty);
+    const buildOrderProfile = getAIBuildOrderProfile(matchConfig.aiBuildOrder);
+    return {
+        ...difficultyProfile,
+        ...buildOrderProfile,
+        attackThreshold: Math.max(2, difficultyProfile.attackThreshold + (buildOrderProfile.attackThresholdDelta || 0)),
+    };
+}
+
 function updateSetupBriefing(config) {
     const normalized = normalizeMatchConfig(config);
     const briefingEl = document.getElementById('setup-briefing');
     if (!briefingEl) return;
     const mapProfile = MAP_PROFILES[normalized.map];
-    briefingEl.textContent = `${mapProfile.name.toUpperCase()} • ${normalized.aiDifficulty.toUpperCase()} AI • $${normalized.startingCredits}`;
+    const aiPlan = getAIBuildOrderProfile(normalized.aiBuildOrder);
+    briefingEl.textContent = `${mapProfile.name.toUpperCase()} • ${normalized.aiDifficulty.toUpperCase()} AI • ${aiPlan.label.toUpperCase()} • $${normalized.startingCredits}`;
 }
 
 // ==================== GAME STATE ====================
@@ -142,7 +210,7 @@ class GameState {
 
         this.matchConfig = normalizeMatchConfig(matchConfig);
         this.mapProfile = MAP_PROFILES[this.matchConfig.map];
-        this.aiConfig = getAIDifficultyProfile(this.matchConfig.aiDifficulty);
+        this.aiConfig = getAIProfile(this.matchConfig);
 
         // Map
         this.map = [];
@@ -154,7 +222,7 @@ class GameState {
         const aiFaction = getFactionProfile(this.matchConfig.playerFaction, 'ai');
         this.players = [
             { faction: playerFaction.faction, money: this.matchConfig.startingCredits, buildings: [], units: [], color: playerFaction.color, isAI: false, lowPowerNotified: false, startingBaseGranted: false },
-            { faction: aiFaction.faction, money: this.matchConfig.startingCredits, buildings: [], units: [], color: aiFaction.color, isAI: true, lowPowerNotified: false, startingBaseGranted: false }
+            { faction: aiFaction.faction, money: this.matchConfig.startingCredits, buildings: [], units: [], color: aiFaction.color, isAI: true, lowPowerNotified: false, startingBaseGranted: false, aiBuildOrder: this.aiConfig.buildOrder, aiBuildOrderLabel: this.aiConfig.label }
         ];
         this.currentPlayer = 0;
         this.matchStats = this.players.map(() => this.createEmptyPlayerStats());
@@ -3661,11 +3729,15 @@ class GameState {
         if (!builtTypes.has('barracks') && tryBuild('barracks')) return;
         if (!builtTypes.has('radarDome') && tryBuild('radarDome')) return;
         if (!builtTypes.has('warFactory') && tryBuild('warFactory')) return;
+        const wantsAirfieldFirst = this.aiConfig.prioritizeAirfield && !builtTypes.has('airfield');
+        const wantsBattleLabFirst = this.aiConfig.prioritizeBattleLab && !builtTypes.has('battleLab');
+        if (wantsAirfieldFirst && builtTypes.has('warFactory') && ai.money >= BUILD_TYPES.airfield.cost + 600 && tryBuild('airfield')) return;
+        if (wantsBattleLabFirst && builtTypes.has('warFactory') && ai.money >= BUILD_TYPES.battleLab.cost && tryBuild('battleLab')) return;
         if (!builtTypes.has('airfield') && builtTypes.has('warFactory') && ai.money >= BUILD_TYPES.airfield.cost + 1000 && tryBuild('airfield')) return;
         if (!builtTypes.has('battleLab') && builtTypes.has('warFactory') && ai.money >= BUILD_TYPES.battleLab.cost && tryBuild('battleLab')) return;
-        if (ai.buildings.filter(b => b.type === 'powerPlant' || b.type === 'advancedPowerPlant').length < 2 && ai.money > 2200 && tryBuild('powerPlant')) return;
-        if (builtTypes.has('barracks') && ai.buildings.filter(b => b.type === 'pillbox' && b.hp > 0).length < 1 && ai.money >= BUILD_TYPES.pillbox.cost && tryBuild('pillbox')) return;
-        if (builtTypes.has('warFactory') && ai.buildings.filter(b => b.type === 'sentryGun' && b.hp > 0).length < 1 && ai.money >= BUILD_TYPES.sentryGun.cost && tryBuild('sentryGun')) return;
+        if (ai.buildings.filter(b => b.type === 'powerPlant' || b.type === 'advancedPowerPlant').length < this.aiConfig.desiredPowerPlants && ai.money > 2200 && tryBuild('powerPlant')) return;
+        if (builtTypes.has('barracks') && ai.buildings.filter(b => b.type === 'pillbox' && b.hp > 0).length < this.aiConfig.desiredPillboxes && ai.money >= BUILD_TYPES.pillbox.cost && tryBuild('pillbox')) return;
+        if (builtTypes.has('warFactory') && ai.buildings.filter(b => b.type === 'sentryGun' && b.hp > 0).length < this.aiConfig.desiredSentryGuns && ai.money >= BUILD_TYPES.sentryGun.cost && tryBuild('sentryGun')) return;
 
         const harvesters = ai.units.filter(u => u.type === 'harvester' && u.state !== 'dead').length;
         const refineries = ai.buildings.filter(b => b.type === 'refinery' && b.built && b.hp > 0).length;
@@ -3709,7 +3781,7 @@ class GameState {
         const aiPatriotCount = ai.buildings.filter(b => b.type === 'patriotBattery' && b.hp > 0).length;
         const antiAirCoverageScore = this.getAntiAirCoverageScore(ai);
         const antiAirEmergency = enemyAirPressure >= 2 && antiAirCoverageScore < (enemyAirPressure * 2);
-        const desiredPatriotCount = enemyAirPressure >= 5 ? 2 : (enemyAirPressure >= 3 ? 1 : 0);
+        const desiredPatriotCount = (enemyAirPressure >= 5 ? 2 : (enemyAirPressure >= 3 ? 1 : 0)) + (this.aiConfig.buildOrder === 'fortified' ? 1 : 0);
         if (antiAirEmergency && builtTypes.has('radarDome') && ai.money >= BUILD_TYPES.patriotBattery.cost && aiPatriotCount < desiredPatriotCount && tryBuild('patriotBattery')) return;
         const desiredIfvCount = enemyAirPressure >= 4 ? 2 : (enemyAirPressure >= 2 ? 1 : 0);
         const desiredFlakTrackCount = enemyAirPressure >= 5 ? 2 : (enemyAirPressure >= 3 ? 1 : 0);
@@ -3731,7 +3803,8 @@ class GameState {
         }
 
         const aiArtilleryCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'artillery').length + this._getTotalTrainQueue(ai, 'artillery');
-        if (artilleryFactories.length > 0 && ai.money >= UNIT_TYPES.artillery.cost && (enemyDefenses >= 1 || enemyBuildings >= 6) && aiArtilleryCount < Math.max(1, Math.ceil(enemyDefenses / 2))) {
+        const desiredArtilleryCount = Math.max(1, Math.ceil(enemyDefenses / 2) + this.aiConfig.desiredArtilleryBias);
+        if (artilleryFactories.length > 0 && ai.money >= UNIT_TYPES.artillery.cost && (enemyDefenses >= 1 || enemyBuildings >= 6 || this.aiConfig.buildOrder === 'fortified') && aiArtilleryCount < desiredArtilleryCount) {
             const wf = artilleryFactories.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
             ai.money -= UNIT_TYPES.artillery.cost;
             if (!wf.training) wf.training = 'artillery';
@@ -3749,7 +3822,8 @@ class GameState {
 
         const aiHarrierCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'harrier').length + this._getTotalTrainQueue(ai, 'harrier');
         const enemyEcoTargets = enemyPlayer.units.filter(u => u.state !== 'dead' && u.type === 'harvester').length + enemyPlayer.buildings.filter(b => b.built && b.hp > 0 && (b.type === 'refinery' || b.type === 'powerPlant')).length;
-        const shouldPrioritizeHarriers = !antiAirEmergency && airfields.length > 0 && ai.money >= UNIT_TYPES.harrier.cost && (enemyDefenses >= 1 || enemyEcoTargets >= 2 || enemyBuildings >= 5) && aiHarrierCount < 2;
+        const desiredHarrierCount = this.aiConfig.desiredHarriers;
+        const shouldPrioritizeHarriers = !antiAirEmergency && airfields.length > 0 && ai.money >= UNIT_TYPES.harrier.cost && (enemyDefenses >= 1 || enemyEcoTargets >= 2 || enemyBuildings >= 5 || this.aiConfig.buildOrder === 'air') && aiHarrierCount < desiredHarrierCount;
         if (shouldPrioritizeHarriers) {
             const airfield = airfields.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
             ai.money -= UNIT_TYPES.harrier.cost;
@@ -3759,7 +3833,8 @@ class GameState {
         }
 
         const aiApocalypseCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'apocalypseTank').length + this._getTotalTrainQueue(ai, 'apocalypseTank');
-        if (builtTypes.has('battleLab') && apocalypseFactories.length > 0 && ai.money >= UNIT_TYPES.apocalypseTank.cost && (enemyHeavyUnits >= 2 || enemyBuildings >= 5 || aiApocalypseCount < 1)) {
+        const wantsArmorBreakthrough = this.aiConfig.buildOrder === 'armor' || this.aiConfig.buildOrder === 'fortified';
+        if (builtTypes.has('battleLab') && apocalypseFactories.length > 0 && ai.money >= UNIT_TYPES.apocalypseTank.cost && (enemyHeavyUnits >= 2 || enemyBuildings >= 5 || aiApocalypseCount < 1 || wantsArmorBreakthrough)) {
             const wf = apocalypseFactories.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
             ai.money -= UNIT_TYPES.apocalypseTank.cost;
             if (!wf.training) wf.training = 'apocalypseTank';
@@ -4649,6 +4724,7 @@ function bindSkirmishSetupPanel() {
         map: document.getElementById('setup-map'),
         playerFaction: document.getElementById('setup-player-faction'),
         aiDifficulty: document.getElementById('setup-ai-difficulty'),
+        aiBuildOrder: document.getElementById('setup-ai-build-order'),
     };
     if (!overlay || !startButton || Object.values(controls).some(control => !control)) return;
 
@@ -4658,6 +4734,7 @@ function bindSkirmishSetupPanel() {
         controls.map.value = normalized.map;
         controls.playerFaction.value = normalized.playerFaction;
         controls.aiDifficulty.value = normalized.aiDifficulty;
+        controls.aiBuildOrder.value = normalized.aiBuildOrder;
         updateSetupBriefing(normalized);
     };
 
@@ -4666,6 +4743,7 @@ function bindSkirmishSetupPanel() {
         map: controls.map.value,
         playerFaction: controls.playerFaction.value,
         aiDifficulty: controls.aiDifficulty.value,
+        aiBuildOrder: controls.aiBuildOrder.value,
     });
 
     applyControls(getStoredMatchConfig());
@@ -4687,6 +4765,8 @@ function bindSkirmishSetupPanel() {
         overlay.classList.add('hidden');
     }
 }
+
+window.GameState = GameState;
 
 // Start the game!
 window.addEventListener('DOMContentLoaded', () => {

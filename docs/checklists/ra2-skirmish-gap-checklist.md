@@ -42,7 +42,7 @@
 - [x] 以 MCV / Construction Yard 为核心的正式开局流程
 - [x] 正式的遭遇战规则参数（starting credits、short/medium/long game）
 - [x] 多出生点 / 真正的 spawn logic
-- [~] 可配置的 skirmish 选项（资金、地图、AI 数量、阵营）
+- [~] 可配置的 skirmish 选项（已支持资金、地图、玩家阵营、AI 难度与 AI build order；AI 数量/多阵营席位仍未完成）
 - [x] 更完整的失败条件（仅靠剩余单位苟活不够 RA2）
 - [x] 胜利结算界面 / 战后统计
 
@@ -220,7 +220,7 @@
 
 ## B13. AI（当前只是能打，不是像样的 skirmish AI）
 - [x] 会扩张基础经济与出兵
-- [ ] 多 build order
+- [x] 多 build order（已支持 Balanced Pressure / Armor Spearhead / Air Supremacy / Fortified Grind 四种 AI build order，并可在 skirmish setup 中配置）
 - [ ] 阵营差异化 AI
 - [x] 护矿 / 骚扰矿车
 - [~] 防空意识（已补 Harrier / Airfield、Flak Track 对空锁定、Patriot Battery 防空塔，以及敌方机场/排队 Harrier 压力下的防空优先级响应；更完整的按敌方空军规模扩张防空体系仍未做完）

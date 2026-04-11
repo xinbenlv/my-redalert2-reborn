@@ -19,7 +19,8 @@ test('battle lab unlocks apocalypse tanks and AI techs into the battle lab tier'
 
   expect(lockedState.labels).toContain('Battle Lab');
   expect(lockedState.lockedClass).toContain('locked');
-  expect(lockedState.lockedText).toContain('Need');
+  expect(lockedState.lockedText).toContain('Next:');
+  expect(lockedState.lockedText).toContain('Missing');
 
   const unlockedState = await page.evaluate(() => {
     const game = (window as any).game;
@@ -93,7 +94,8 @@ test('battle lab unlocks apocalypse tanks and AI techs into the battle lab tier'
     const hasBattleLabBefore = ai.buildings.some((building: any) => building.type === 'battleLab');
     game.aiTimer = game.aiDecisionInterval;
     game.updateAI(5000);
-    const battleLab = ai.buildings.find((building: any) => building.type === 'battleLab');
+
+    let battleLab = ai.buildings.find((building: any) => building.type === 'battleLab');
     if (battleLab) {
       battleLab.built = true;
       battleLab.buildProgress = 1;
@@ -101,6 +103,14 @@ test('battle lab unlocks apocalypse tanks and AI techs into the battle lab tier'
 
     game.aiTimer = game.aiDecisionInterval;
     game.updateAI(5000);
+
+    battleLab = ai.buildings.find((building: any) => building.type === 'battleLab');
+    if (battleLab && !battleLab.built) {
+      battleLab.built = true;
+      battleLab.buildProgress = 1;
+      game.aiTimer = game.aiDecisionInterval;
+      game.updateAI(5000);
+    }
 
     return {
       hasBattleLabBefore,
