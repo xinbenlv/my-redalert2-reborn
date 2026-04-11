@@ -841,6 +841,7 @@ class GameState {
 
         window.addEventListener('keydown', e => {
             this.keys[e.key.toLowerCase()] = true;
+            const lowerKey = e.key.toLowerCase();
             if (e.ctrlKey && e.key >= '1' && e.key <= '9') {
                 this._groups = this._groups || {};
                 this._groups[e.key] = [...this.selected];
@@ -852,7 +853,15 @@ class GameState {
                     this.updateSelectionInfo();
                 }
             }
-            if (e.key.toLowerCase() === 'd') {
+            if (lowerKey === 'x' && this.scatterSelectedUnits()) {
+                e.preventDefault();
+                return;
+            }
+            if (lowerKey === 's' && this.stopSelectedUnits()) {
+                e.preventDefault();
+                return;
+            }
+            if (lowerKey === 'd') {
                 const unit = this.selected.length === 1 && this.selected[0]?.tx === undefined ? this.selected[0] : null;
                 if (unit?.type === 'mcv') {
                     this.deployMCV(unit);
@@ -1396,6 +1405,81 @@ class GameState {
 
     canUnitReceiveCommand(unit) {
         return unit && unit.state !== 'dead' && unit.state !== 'loaded' && unit.role !== 'harvester';
+    }
+
+    getSelectedCommandableUnits() {
+        return this.selected.filter(unit => unit?.tx === undefined && this.canUnitReceiveCommand(unit));
+    }
+
+    clearUnitOrders(unit) {
+        if (!unit || unit.state === 'dead' || unit.state === 'loaded') return false;
+        if (unit.transportTarget?.loadTarget === unit) {
+            unit.transportTarget.loadTarget = null;
+            if (unit.transportTarget.state === 'loading') unit.transportTarget.state = 'idle';
+        }
+        if (this.isTransportUnit(unit) && unit.loadTarget) {
+            unit.loadTarget.transportTarget = null;
+            unit.loadTarget._transportBoardingAnchor = null;
+            if (unit.loadTarget.state === 'boardingTransport') unit.loadTarget.state = 'idle';
+        }
+        unit.captureTarget = null;
+        unit.garrisonTarget = null;
+        unit.transportTarget = null;
+        unit.loadTarget = null;
+        unit.unloadTarget = null;
+        unit.transportCarrier = null;
+        unit.attackTarget = null;
+        unit.target = null;
+        unit.path = null;
+        unit.pathIdx = 0;
+        unit.aiTransportAttackTarget = null;
+        unit._transportBoardingAnchor = null;
+        unit._transportUnloadAnchor = null;
+        unit._savedTarget = null;
+        unit._savedPath = null;
+        unit._savedPathIdx = 0;
+        unit.state = 'idle';
+        return true;
+    }
+
+    stopSelectedUnits() {
+        const units = this.getSelectedCommandableUnits();
+        if (!units.length) return false;
+        let stopped = 0;
+        for (const unit of units) {
+            stopped += this.clearUnitOrders(unit) ? 1 : 0;
+        }
+        if (!stopped) return false;
+        const primary = units[0];
+        this.commandPings.push({ tx: primary.x, ty: primary.y, color: '#ffd36b', time: 0 });
+        this.eva(stopped === 1 ? `${this.getDisplayName(primary.type)} standing by.` : `${stopped} units received stop order.`);
+        this.updateSelectionInfo();
+        return true;
+    }
+
+    scatterSelectedUnits() {
+        const units = this.getSelectedCommandableUnits();
+        if (!units.length) return false;
+        const center = units.reduce((acc, unit) => {
+            acc.x += unit.x;
+            acc.y += unit.y;
+            return acc;
+        }, { x: 0, y: 0 });
+        center.x /= units.length;
+        center.y /= units.length;
+        const baseRadius = units.length === 1 ? 1.4 : Math.max(1.2, 0.8 + units.length * 0.28);
+        units.forEach((unit, index) => {
+            this.clearUnitOrders(unit);
+            const angle = (Math.PI * 2 * index) / units.length;
+            const radius = baseRadius + (index % 2) * 0.5;
+            const tx = Math.max(0.5, Math.min(MAP_SIZE - 0.5, center.x + Math.cos(angle) * radius));
+            const ty = Math.max(0.5, Math.min(MAP_SIZE - 0.5, center.y + Math.sin(angle) * radius));
+            this.issueMoveOrder(unit, tx, ty);
+        });
+        this.commandPings.push({ tx: center.x, ty: center.y, color: '#ffcc33', time: 0 });
+        this.eva(units.length === 1 ? `${this.getDisplayName(units[0].type)} scattering.` : `${units.length} units scattering.`);
+        this.updateSelectionInfo();
+        return true;
     }
 
     isCombatUnit(unit) {
@@ -3936,6 +4020,14 @@ class GameState {
             const action = e.target?.dataset?.action;
             if (!action) return;
             const selectedUnit = this.selected.length === 1 && this.selected[0]?.tx === undefined ? this.selected[0] : null;
+            if (action === 'stop') {
+                this.stopSelectedUnits();
+                return;
+            }
+            if (action === 'scatter') {
+                this.scatterSelectedUnits();
+                return;
+            }
             if (action === 'deploy') {
                 if (selectedUnit?.type === 'mcv') this.deployMCV(selectedUnit);
                 return;
@@ -4144,6 +4236,9 @@ class GameState {
                 const deployButton = s.type === 'mcv'
                     ? `<button class="selection-action" data-action="deploy" ${this.canDeployMCV(s) ? '' : 'disabled'}>Deploy MCV</button>`
                     : '';
+                const commandButtons = this.canUnitReceiveCommand(s)
+                    ? `<button class="selection-action" data-action="stop">Stop</button><button class="selection-action" data-action="scatter">Scatter</button>`
+                    : '';
                 const unloadButton = this.isTransportUnit(s)
                     ? `<button class="selection-action" data-action="unload" ${s.passengers.length ? '' : 'disabled'}>Unload APC</button>`
                     : '';
@@ -4152,7 +4247,7 @@ class GameState {
                     <div>${extras.join(' | ')}</div>
                     ${veterancyBits.length ? `<div style="color:#ffd36b">${veterancyBits.join(' | ')}</div>` : ''}
                     <div style="color:#666;font-size:9px">${s.state}</div>
-                    ${(deployButton || unloadButton) ? `<div class="selection-actions">${deployButton}${unloadButton}</div>` : ''}`;
+                    ${(deployButton || unloadButton || commandButtons) ? `<div class="selection-actions">${deployButton}${unloadButton}${commandButtons}</div><div class="selection-hint">Stop cancels the current order. Scatter sends the selection to nearby offsets. Hotkeys: S / X.</div>` : ''}`;
             } else {
                 const def = BUILD_TYPES[s.type];
                 const statusBits = [];
@@ -4200,6 +4295,7 @@ class GameState {
             }
         } else {
             const units = this.selected.filter(u => u.tx === undefined);
+            const commandableUnits = units.filter(u => this.canUnitReceiveCommand(u));
             const harvesters = units.filter(u => u.role === 'harvester').length;
             const fighters = units.length - harvesters;
             const veterans = units.filter(u => u.veterancyRank === 'veteran').length;
@@ -4207,7 +4303,8 @@ class GameState {
             info.innerHTML = `<div style="color:#00ff88">${units.length} units selected</div>
                 <div>${fighters} combat | ${harvesters} harvesters</div>
                 <div style="color:#ffd36b">${veterans} veteran | ${elites} elite</div>
-                <div style="color:#666;font-size:9px">Right-click commands apply to combat units only</div>`;
+                <div style="color:#666;font-size:9px">Right-click commands apply to combat units only</div>
+                ${commandableUnits.length ? `<div class="selection-actions"><button class="selection-action" data-action="stop">Stop</button><button class="selection-action" data-action="scatter">Scatter</button></div><div class="selection-hint">Stop cancels the current order. Scatter fans the group into nearby positions. Hotkeys: S / X.</div>` : ''}`;
         }
     }
 
