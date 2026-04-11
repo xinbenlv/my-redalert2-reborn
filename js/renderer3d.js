@@ -301,6 +301,12 @@ class Renderer3D {
         let mesh = this.unitMeshes.get(unit);
         if (!mesh) return;
 
+        if (unit.state === 'loaded') {
+            mesh.visible = false;
+            return;
+        }
+        mesh.visible = true;
+
         // Position
         mesh.position.set(
             unit.x * this.tileSize,
@@ -568,7 +574,7 @@ class Renderer3D {
             }
 
             for (const u of p.units) {
-                if (u.state === 'dead') continue;
+                if (u.state === 'dead' || u.state === 'loaded') continue;
                 const screen = this.tileToScreen(u.x, u.y);
                 if (u.hp < u.maxHp || selectedSet.has(u)) {
                     const ratio = u.hp / u.maxHp;

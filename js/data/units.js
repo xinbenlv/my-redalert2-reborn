@@ -169,6 +169,10 @@ window.UNIT_TYPES = {
             heavy: 0.45,
             building: 0.4
         },
+        canTransport: true,
+        passengerCapacity: 4,
+        transportPickupRange: 1.2,
+        unloadRadius: 1.9,
         producedBy: 'warFactory',
         prerequisites: ['warFactory']
     },

@@ -48,6 +48,7 @@ const VETERANCY_BONUSES = {
     veteran: { hp: 1.12, damage: 1.15, fireRate: 0.9 },
     elite: { hp: 1.28, damage: 1.3, fireRate: 0.8 },
 };
+const TRANSPORTABLE_INFANTRY_TYPES = new Set(['soldier', 'rocketInfantry', 'flakTrooper', 'engineer']);
 
 function normalizeMatchConfig(config = {}) {
     const startingCredits = Number(config.startingCredits);
@@ -295,7 +296,21 @@ class GameState {
     markUnitDestroyed(unit, attackerOwner = null, attackerUnit = null) {
         if (!unit || unit._lossRecorded) return;
         unit._lossRecorded = true;
+        if (unit.passengers?.length) {
+            for (const passenger of unit.passengers) {
+                this.markUnitDestroyed(passenger, attackerOwner, attackerUnit);
+            }
+            unit.passengers = [];
+        }
+        if (unit.transportCarrier && unit.transportCarrier.passengers) {
+            unit.transportCarrier.passengers = unit.transportCarrier.passengers.filter(passenger => passenger !== unit);
+        }
+        unit.transportCarrier = null;
+        unit.transportTarget = null;
+        unit.loadTarget = null;
+        unit.unloadTarget = null;
         unit.state = 'dead';
+        this.renderer3d?.setUnitVisible(unit, true);
         this.getPlayerStats(unit.owner).unitsLost += 1;
         if (Number.isInteger(attackerOwner) && attackerOwner !== unit.owner) {
             this.getPlayerStats(attackerOwner).unitsKilled += 1;
@@ -592,6 +607,15 @@ class GameState {
             captureTarget: null,
             cargo: 0,
             cargoCapacity: def.cargoCapacity || 0,
+            passengerCapacity: def.passengerCapacity || 0,
+            passengers: [],
+            canTransport: !!def.canTransport,
+            transportPickupRange: def.transportPickupRange || 1.1,
+            unloadRadius: def.unloadRadius || 1.4,
+            loadTarget: null,
+            unloadTarget: null,
+            transportTarget: null,
+            transportCarrier: null,
             harvestRate: def.harvestRate || 0,
             harvestInterval: def.harvestInterval || 0,
             unloadRate: def.unloadRate || 0,
@@ -1046,7 +1070,7 @@ class GameState {
 
         let bestUnit = null, bestDist = 999;
         for (const u of p.units) {
-            if (u.state === 'dead') continue;
+            if (u.state === 'dead' || u.state === 'loaded') continue;
             const d = Math.hypot(u.x - tx, u.y - ty);
             if (d < 1.5 && d < bestDist) {
                 bestDist = d;
@@ -1087,6 +1111,40 @@ class GameState {
             this.commandPings.push({ tx: tile.x, ty: tile.y, color: '#00aaff', time: 0 });
             this.updateSelectionInfo();
             return;
+        }
+
+        const friendlyTransport = this.players[this.currentPlayer].units.find(unit =>
+            this.isTransportUnit(unit) && Math.hypot(unit.x - tile.x, unit.y - tile.y) < 1.5
+        );
+        if (friendlyTransport) {
+            let boardingIssued = false;
+            for (const unit of this.selected) {
+                if (unit?.tx !== undefined || !this.canUnitReceiveCommand(unit) || !this.canTransportPassenger(friendlyTransport, unit)) continue;
+                boardingIssued = this.orderPassengerToBoard(unit, friendlyTransport) || boardingIssued;
+            }
+            if (boardingIssued) {
+                this.commandPings.push({ tx: tile.x, ty: tile.y, color: '#66ccff', time: 0 });
+                return;
+            }
+        }
+
+        const friendlyInfantry = this.players[this.currentPlayer].units.find(unit =>
+            unit.state !== 'dead'
+            && unit.state !== 'loaded'
+            && unit.tx === undefined
+            && TRANSPORTABLE_INFANTRY_TYPES.has(unit.type)
+            && Math.hypot(unit.x - tile.x, unit.y - tile.y) < 1.1
+        );
+        if (friendlyInfantry) {
+            let pickupIssued = false;
+            for (const unit of this.selected) {
+                if (!this.isTransportUnit(unit) || !this.canTransportPassenger(unit, friendlyInfantry)) continue;
+                pickupIssued = this.orderTransportPickup(unit, friendlyInfantry) || pickupIssued;
+            }
+            if (pickupIssued) {
+                this.commandPings.push({ tx: tile.x, ty: tile.y, color: '#66ccff', time: 0 });
+                return;
+            }
         }
 
         // Check if right-clicked on an enemy unit
@@ -1135,10 +1193,18 @@ class GameState {
             return;
         }
 
-        // Move command
+        // Move / unload command
+        let issuedUnload = false;
+        for (const u of this.selected) {
+            if (this.isTransportUnit(u) && u.passengers?.length) {
+                issuedUnload = this.orderTransportUnload(u, tile.x, tile.y) || issuedUnload;
+            }
+        }
         for (const u of this.selected) {
             if (!this.canUnitReceiveCommand(u)) continue;
+            if (this.isTransportUnit(u) && u.passengers?.length) continue;
             u.captureTarget = null;
+            u.transportTarget = null;
             u.target = { x: tile.x, y: tile.y };
             u.attackTarget = null;
             u._savedTarget = null;
@@ -1153,7 +1219,7 @@ class GameState {
                 u.pathIdx = 0;
             }
         }
-        this.commandPings.push({ tx: tile.x, ty: tile.y, color: '#00ff88', time: 0 });
+        this.commandPings.push({ tx: tile.x, ty: tile.y, color: issuedUnload ? '#00c8ff' : '#00ff88', time: 0 });
     }
 
     _updateCursor(tile) {
@@ -1250,11 +1316,179 @@ class GameState {
     }
 
     canUnitReceiveCommand(unit) {
-        return unit && unit.state !== 'dead' && unit.role !== 'harvester';
+        return unit && unit.state !== 'dead' && unit.state !== 'loaded' && unit.role !== 'harvester';
     }
 
     isCombatUnit(unit) {
-        return unit && unit.state !== 'dead' && unit.damage > 0;
+        return unit && unit.state !== 'dead' && unit.state !== 'loaded' && unit.damage > 0;
+    }
+
+    isTransportUnit(unit) {
+        return !!(unit && unit.tx === undefined && unit.canTransport && unit.state !== 'dead');
+    }
+
+    canTransportPassenger(carrier, passenger) {
+        if (!this.isTransportUnit(carrier) || !passenger || passenger.tx !== undefined) return false;
+        if (carrier.owner !== passenger.owner || carrier === passenger) return false;
+        if (passenger.state === 'dead' || passenger.state === 'loaded') return false;
+        if (carrier.passengers.length >= carrier.passengerCapacity) return false;
+        return TRANSPORTABLE_INFANTRY_TYPES.has(passenger.type);
+    }
+
+    getAvailableUnloadPositions(carrier, targetX = carrier?.x, targetY = carrier?.y, count = 1) {
+        if (!carrier) return [];
+        const positions = [];
+        const seen = new Set();
+        const baseX = Math.round(targetX);
+        const baseY = Math.round(targetY);
+        for (let radius = 1; radius <= 3 && positions.length < count; radius++) {
+            for (let dy = -radius; dy <= radius && positions.length < count; dy++) {
+                for (let dx = -radius; dx <= radius && positions.length < count; dx++) {
+                    const tx = baseX + dx;
+                    const ty = baseY + dy;
+                    const key = `${tx},${ty}`;
+                    if (seen.has(key)) continue;
+                    seen.add(key);
+                    if (tx < 0 || ty < 0 || tx >= MAP_SIZE || ty >= MAP_SIZE) continue;
+                    if (this.map[ty]?.[tx]?.type === 'water') continue;
+                    if (this.players.some(player => player.buildings.some(building => building.hp > 0 && tx >= building.tx && tx < building.tx + building.size && ty >= building.ty && ty < building.ty + building.size))) continue;
+                    if (this.players.some(player => player.units.some(unit => unit !== carrier && unit.state !== 'dead' && unit.state !== 'loaded' && Math.hypot(unit.x - tx, unit.y - ty) < 0.6))) continue;
+                    positions.push({ x: tx, y: ty });
+                }
+            }
+        }
+        return positions;
+    }
+
+    orderPassengerToBoard(passenger, carrier) {
+        if (!this.canTransportPassenger(carrier, passenger)) return false;
+        passenger.transportTarget = carrier;
+        passenger.captureTarget = null;
+        passenger.attackTarget = null;
+        this.issueMoveOrder(passenger, carrier.x, carrier.y, 'boardingTransport');
+        return true;
+    }
+
+    orderTransportPickup(carrier, passenger) {
+        if (!this.canTransportPassenger(carrier, passenger)) return false;
+        carrier.loadTarget = passenger;
+        passenger.transportTarget = carrier;
+        passenger.captureTarget = null;
+        passenger.attackTarget = null;
+        if (Math.hypot(carrier.x - passenger.x, carrier.y - passenger.y) > carrier.transportPickupRange) {
+            this.issueMoveOrder(carrier, passenger.x, passenger.y, 'loading');
+        } else {
+            carrier.state = 'loading';
+        }
+        return true;
+    }
+
+    loadPassengerIntoTransport(carrier, passenger) {
+        if (!this.canTransportPassenger(carrier, passenger)) return false;
+        carrier.passengers.push(passenger);
+        carrier.loadTarget = null;
+        passenger.transportTarget = null;
+        passenger.transportCarrier = carrier;
+        passenger.target = null;
+        passenger.attackTarget = null;
+        passenger.captureTarget = null;
+        passenger.path = null;
+        passenger.pathIdx = 0;
+        passenger.x = carrier.x;
+        passenger.y = carrier.y;
+        passenger.state = 'loaded';
+        if (this.selected.includes(passenger)) {
+            this.selected = this.selected.filter(entity => entity !== passenger);
+            this.updateSelectionInfo();
+        }
+        this.renderer3d?.setUnitVisible(passenger, false);
+        return true;
+    }
+
+    orderTransportUnload(carrier, tx, ty) {
+        if (!this.isTransportUnit(carrier) || !carrier.passengers.length) return false;
+        carrier.loadTarget = null;
+        carrier.unloadTarget = { x: tx, y: ty };
+        if (Math.hypot(carrier.x - tx, carrier.y - ty) > carrier.unloadRadius) {
+            this.issueMoveOrder(carrier, tx, ty, 'unloadingPassengers');
+        } else {
+            carrier.state = 'unloadingPassengers';
+        }
+        return true;
+    }
+
+    unloadTransport(carrier, targetX = carrier?.x, targetY = carrier?.y) {
+        if (!this.isTransportUnit(carrier) || !carrier.passengers.length) return 0;
+        const positions = this.getAvailableUnloadPositions(carrier, targetX, targetY, carrier.passengers.length);
+        let unloaded = 0;
+        while (carrier.passengers.length && positions.length) {
+            const passenger = carrier.passengers.shift();
+            const pos = positions.shift();
+            passenger.transportCarrier = null;
+            passenger.transportTarget = null;
+            passenger.x = pos.x;
+            passenger.y = pos.y;
+            passenger.state = 'idle';
+            passenger.target = null;
+            passenger.path = null;
+            passenger.pathIdx = 0;
+            this.renderer3d?.setUnitVisible(passenger, true);
+            unloaded += 1;
+        }
+        if (!carrier.passengers.length) {
+            carrier.unloadTarget = null;
+        }
+        return unloaded;
+    }
+
+    updateTransportUnit(unit, dt) {
+        if (!this.isTransportUnit(unit)) return false;
+
+        if (unit.passengers?.length) {
+            for (const passenger of unit.passengers) {
+                passenger.x = unit.x;
+                passenger.y = unit.y;
+            }
+        }
+
+        if (unit.loadTarget && unit.state !== 'loading') {
+            unit.state = 'loading';
+        }
+        if (unit.unloadTarget && unit.state !== 'unloadingPassengers') {
+            unit.state = 'unloadingPassengers';
+        }
+
+        if (unit.state === 'loading' && unit.loadTarget) {
+            const passenger = unit.loadTarget;
+            if (!this.canTransportPassenger(unit, passenger)) {
+                unit.loadTarget = null;
+                if (unit.state === 'loading') unit.state = 'idle';
+                return true;
+            }
+            const dist = Math.hypot(unit.x - passenger.x, unit.y - passenger.y);
+            if (dist > unit.transportPickupRange) {
+                this.issueMoveOrder(unit, passenger.x, passenger.y, 'loading');
+                this.moveUnitAlongPath(unit, dt);
+                return true;
+            }
+            this.loadPassengerIntoTransport(unit, passenger);
+            unit.state = 'idle';
+            return true;
+        }
+
+        if (unit.state === 'unloadingPassengers' && unit.unloadTarget) {
+            const dist = Math.hypot(unit.x - unit.unloadTarget.x, unit.y - unit.unloadTarget.y);
+            if (dist > unit.unloadRadius) {
+                this.issueMoveOrder(unit, unit.unloadTarget.x, unit.unloadTarget.y, 'unloadingPassengers');
+                this.moveUnitAlongPath(unit, dt);
+                return true;
+            }
+            this.unloadTransport(unit, unit.unloadTarget.x, unit.unloadTarget.y);
+            unit.state = 'idle';
+            return true;
+        }
+
+        return false;
     }
 
     isDefensiveBuilding(building) {
@@ -2069,8 +2303,27 @@ class GameState {
                     this.updateHarvesterUnit(u, p, dt);
                     continue;
                 }
-                if (u.role === 'engineer') {
+                if (u.role === 'engineer' && !u.transportTarget && u.state !== 'boardingTransport') {
                     this.updateEngineerUnit(u, dt);
+                    continue;
+                }
+                if (u.state === 'boardingTransport' || u.transportTarget) {
+                    const carrier = u.transportTarget;
+                    if (!carrier || !this.canTransportPassenger(carrier, u)) {
+                        u.transportTarget = null;
+                        if (u.state === 'boardingTransport') u.state = 'idle';
+                        continue;
+                    }
+                    const dist = Math.hypot(u.x - carrier.x, u.y - carrier.y);
+                    if (dist <= (carrier.transportPickupRange || 1.1)) {
+                        this.loadPassengerIntoTransport(carrier, u);
+                    } else {
+                        this.issueMoveOrder(u, carrier.x, carrier.y, 'boardingTransport');
+                        this.moveUnitAlongPath(u, dt);
+                    }
+                    continue;
+                }
+                if (u.state === 'loaded') {
                     continue;
                 }
 
@@ -2084,8 +2337,11 @@ class GameState {
                 if (this.isAirUnit(u) && this.updateAirUnit(u, p, dt)) {
                     continue;
                 }
+                if (this.updateTransportUnit(u, dt)) {
+                    continue;
+                }
 
-                if (u.state === 'moving' || (u.state === 'attacking' && u.attackTarget)) {
+                if (u.state === 'moving' || u.state === 'loading' || u.state === 'unloadingPassengers' || (u.state === 'attacking' && u.attackTarget)) {
                     let targetX, targetY;
 
                     if (u.state === 'attacking' && u.attackTarget) {
@@ -3243,6 +3499,15 @@ class GameState {
                 if (selectedUnit?.type === 'mcv') this.deployMCV(selectedUnit);
                 return;
             }
+            if (action === 'unload') {
+                if (this.isTransportUnit(selectedUnit) && selectedUnit.passengers.length) {
+                    this.unloadTransport(selectedUnit, selectedUnit.x, selectedUnit.y);
+                    selectedUnit.state = 'idle';
+                    this.eva('APC unloading passengers.');
+                    this.updateSelectionInfo();
+                }
+                return;
+            }
             const building = this.getPrimarySelectedBuilding();
             if (!building) return;
 
@@ -3387,7 +3652,12 @@ class GameState {
                 const extras = [];
                 const veterancyBits = [];
                 if (s.role === 'harvester') extras.push(`ORE: ${Math.floor(s.cargo)}/${s.cargoCapacity}`);
-                else if (s.type === 'mcv') {
+                else if (this.isTransportUnit(s)) {
+                    extras.push(`CARGO: ${s.passengers.length}/${s.passengerCapacity}`);
+                    if (s.passengers.length) {
+                        extras.push(`LOADED: ${s.passengers.map(passenger => this.getDisplayName(passenger.type)).join(', ')}`);
+                    }
+                } else if (s.type === 'mcv') {
                     extras.push(this.canDeployMCV(s) ? 'DEPLOY READY' : 'DEPLOY BLOCKED');
                     extras.push('D / Deploy button');
                 } else if (s.role === 'engineer') {
@@ -3406,12 +3676,15 @@ class GameState {
                 const deployButton = s.type === 'mcv'
                     ? `<button class="selection-action" data-action="deploy" ${this.canDeployMCV(s) ? '' : 'disabled'}>Deploy MCV</button>`
                     : '';
+                const unloadButton = this.isTransportUnit(s)
+                    ? `<button class="selection-action" data-action="unload" ${s.passengers.length ? '' : 'disabled'}>Unload APC</button>`
+                    : '';
                 info.innerHTML = `<div style="color:#00ff88">${this.getDisplayName(s.type)}</div>
                     <div>HP: ${Math.floor(s.hp)}/${s.maxHp}</div>
                     <div>${extras.join(' | ')}</div>
                     ${veterancyBits.length ? `<div style="color:#ffd36b">${veterancyBits.join(' | ')}</div>` : ''}
                     <div style="color:#666;font-size:9px">${s.state}</div>
-                    ${deployButton ? `<div class="selection-actions">${deployButton}</div>` : ''}`;
+                    ${(deployButton || unloadButton) ? `<div class="selection-actions">${deployButton}${unloadButton}</div>` : ''}`;
             } else {
                 const def = BUILD_TYPES[s.type];
                 const statusBits = [];

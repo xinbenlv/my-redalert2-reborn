@@ -107,7 +107,7 @@
 ### B4.2 载具
 - [x] Harvester
 - [x] Rhino Tank
-- [~] APC / IFV（已补 APC + 基础 IFV 防空车；运输/步兵装载协同仍未完成）
+- [~] APC / IFV（已补 APC + 基础 IFV 防空车；APC 步兵装载 / 卸载已补，运输协同 AI 仍未完成）
 - [x] Anti-air vehicle
 - [x] Artillery / V3 / Siege 类远程单位
 - [ ] Terror Drone / Mirage / Prism Tank / Apocalypse / Kirov 等特色载具
@@ -176,7 +176,7 @@
 - [ ] 载具碾压步兵
 - [ ] 部署型单位 / 展开型单位
 - [x] 工程师占建筑
-- [ ] 运输载具装载 / 卸载
+- [x] 运输载具装载 / 卸载
 
 ## B9. veterancy / crate / map pickups
 - [x] Veterancy（rookie / veteran / elite）
@@ -275,7 +275,7 @@
 
 ### C2. P1：把“中局节奏”补出来
 - [x] Battle Lab
-- [~] 更多载具与反制链（已补 V3 Artillery + APC + IFV + Flak Track + Harrier 回场补弹，仍缺运输协同与更完整的空地反制反馈）
+- [~] 更多载具与反制链（已补 V3 Artillery + APC 装载/卸载 + IFV + Flak Track + Harrier 回场补弹，仍缺运输协同 AI 与更完整的空地反制反馈）
 - [x] veterancy
 - [x] air units（已补 Airfield + Harrier 基础空袭链路）
 - [x] more maps
