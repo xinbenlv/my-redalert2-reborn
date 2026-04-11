@@ -644,6 +644,8 @@ class GameState {
             deadTimer: 0,
             path: null,
             pathIdx: 0,
+            patrolRoute: null,
+            patrolIndex: 0,
             _walkPhase: 0,
             canDeploy: !!def.canDeploy,
             deploysTo: def.deploysTo || null,
@@ -863,6 +865,10 @@ class GameState {
                 return;
             }
             if (lowerKey === 's' && this.stopSelectedUnits()) {
+                e.preventDefault();
+                return;
+            }
+            if (lowerKey === 'p' && this.togglePatrolMode()) {
                 e.preventDefault();
                 return;
             }
@@ -1186,6 +1192,30 @@ class GameState {
             return;
         }
 
+        if (this.commandMode === 'set-patrol') {
+            const units = this.getSelectedCommandableUnits();
+            if (!units.length) {
+                this.commandMode = null;
+                this.updateSelectionInfo();
+                return;
+            }
+            let issuedPatrol = false;
+            units.forEach((unit, index) => {
+                const angle = units.length > 1 ? (Math.PI * 2 * index) / units.length : 0;
+                const radius = units.length > 1 ? Math.min(1.2, 0.35 * units.length) : 0;
+                const tx = Math.max(0.5, Math.min(MAP_SIZE - 0.5, tile.x + Math.cos(angle) * radius));
+                const ty = Math.max(0.5, Math.min(MAP_SIZE - 0.5, tile.y + Math.sin(angle) * radius));
+                issuedPatrol = this.assignPatrolRoute(unit, tx, ty) || issuedPatrol;
+            });
+            this.commandMode = null;
+            if (issuedPatrol) {
+                this.commandPings.push({ tx: tile.x, ty: tile.y, color: '#66e0ff', time: 0 });
+                this.eva(units.length === 1 ? `${this.getDisplayName(units[0].type)} patrol route confirmed.` : `${units.length} units patrolling.`);
+            }
+            this.updateSelectionInfo();
+            return;
+        }
+
         const friendlyTransport = this.players[this.currentPlayer].units.find(unit =>
             this.isTransportUnit(unit) && Math.hypot(unit.x - tile.x, unit.y - tile.y) < 1.5
         );
@@ -1468,7 +1498,18 @@ class GameState {
         unit._savedTarget = null;
         unit._savedPath = null;
         unit._savedPathIdx = 0;
+        unit.patrolRoute = null;
+        unit.patrolIndex = 0;
         unit.state = 'idle';
+        return true;
+    }
+
+    togglePatrolMode() {
+        const units = this.getSelectedCommandableUnits();
+        if (!units.length) return false;
+        this.commandMode = this.commandMode === 'set-patrol' ? null : 'set-patrol';
+        this.eva(this.commandMode ? 'Right-click to place patrol route.' : 'Patrol placement cancelled.');
+        this.updateSelectionInfo();
         return true;
     }
 
@@ -1509,6 +1550,27 @@ class GameState {
         this.commandPings.push({ tx: center.x, ty: center.y, color: '#ffcc33', time: 0 });
         this.eva(units.length === 1 ? `${this.getDisplayName(units[0].type)} scattering.` : `${units.length} units scattering.`);
         this.updateSelectionInfo();
+        return true;
+    }
+
+    assignPatrolRoute(unit, tx, ty) {
+        if (!this.canUnitReceiveCommand(unit)) return false;
+        const start = { x: unit.x, y: unit.y };
+        const destination = { x: tx, y: ty };
+        if (Math.hypot(start.x - destination.x, start.y - destination.y) < 0.4) return false;
+        this.clearUnitOrders(unit);
+        unit.patrolRoute = [start, destination];
+        unit.patrolIndex = 1;
+        this.issueMoveOrder(unit, destination.x, destination.y, 'patrolling');
+        return true;
+    }
+
+    advancePatrolRoute(unit) {
+        if (!unit?.patrolRoute?.length || unit.patrolRoute.length < 2) return false;
+        unit.patrolIndex = unit.patrolIndex === 1 ? 0 : 1;
+        const nextStop = unit.patrolRoute[unit.patrolIndex];
+        if (!nextStop) return false;
+        this.issueMoveOrder(unit, nextStop.x, nextStop.y, 'patrolling');
         return true;
     }
 
@@ -1945,6 +2007,10 @@ class GameState {
         unit.target = { x: tx, y: ty };
         unit.attackTarget = null;
         unit.state = state;
+        if (state !== 'patrolling') {
+            unit.patrolRoute = null;
+            unit.patrolIndex = 0;
+        }
         if (this.isAirUnit(unit)) {
             unit.path = null;
             unit.pathIdx = 0;
@@ -2118,7 +2184,7 @@ class GameState {
             if (!finalPoint || pathPoints.length < 2) continue;
 
             overlays.push({
-                kind: unit.attackTarget ? 'attack' : 'move',
+                kind: unit.attackTarget ? 'attack' : (unit.patrolRoute ? 'patrol' : 'move'),
                 unit,
                 path: pathPoints,
                 target: finalPoint
@@ -2914,7 +2980,7 @@ class GameState {
                     continue;
                 }
 
-                if (u.state === 'moving' || u.state === 'loading' || u.state === 'unloadingPassengers' || (u.state === 'attacking' && u.attackTarget)) {
+                if (u.state === 'moving' || u.state === 'patrolling' || u.state === 'loading' || u.state === 'unloadingPassengers' || (u.state === 'attacking' && u.attackTarget)) {
                     let targetX, targetY;
 
                     if (u.state === 'attacking' && u.attackTarget) {
@@ -2926,7 +2992,9 @@ class GameState {
 
                         if ((at.hp !== undefined && at.hp <= 0) || at.state === 'dead' || !this.canEntityTarget(u, at)) {
                             u.attackTarget = null;
-                            u.state = 'idle';
+                            if (!this.advancePatrolRoute(u)) {
+                                u.state = 'idle';
+                            }
                             continue;
                         }
 
@@ -3004,7 +3072,7 @@ class GameState {
                             }
                         }
                         continue;
-                    } else if (u.state === 'moving') {
+                    } else if (u.state === 'moving' || u.state === 'patrolling') {
                         // While moving, check for enemies in attack range → auto-engage
                         const nearbyEnemy = this._findNearestEnemy(u, u.owner);
                         if (nearbyEnemy) {
@@ -3051,9 +3119,11 @@ class GameState {
                     const dy = targetY - u.y;
                     const dist = Math.hypot(dx, dy);
 
-                    if (dist < 0.2 && u.state === 'moving') {
+                    if (dist < 0.2 && (u.state === 'moving' || u.state === 'patrolling')) {
                         if (u.path && u.pathIdx < u.path.length - 1) {
                             u.pathIdx++;
+                        } else if (u.state === 'patrolling' && u.patrolRoute?.length >= 2) {
+                            this.advancePatrolRoute(u);
                         } else {
                             u.state = 'idle';
                             u.target = null;
@@ -3071,12 +3141,13 @@ class GameState {
                 if (u.state === 'engaging') {
                     const at = u.attackTarget;
                     if (!at || (at.hp !== undefined && at.hp <= 0) || at.state === 'dead' || !this.canEntityTarget(u, at)) {
-                        // Enemy dead → go idle (player must re-issue move command)
                         u.attackTarget = null;
-                        u.state = 'idle';
                         u._savedTarget = null;
                         u._savedPath = null;
                         u._savedPathIdx = null;
+                        if (!this.advancePatrolRoute(u)) {
+                            u.state = 'idle';
+                        }
                         continue;
                     }
 
@@ -3996,15 +4067,17 @@ class GameState {
         const orderOverlays = this.getSelectedOrderOverlays();
         for (const overlay of orderOverlays.slice(0, 10)) {
             const isAttack = overlay.kind === 'attack';
+            const isPatrol = overlay.kind === 'patrol';
+            const color = isAttack ? '#ff5a36' : (isPatrol ? '#66e0ff' : '#00ff88');
             this._drawOverlayPath(ctx, overlay.path, {
-                color: isAttack ? '#ff5a36' : '#00ff88',
+                color,
                 dashed: true,
-                width: 1.5,
+                width: isPatrol ? 2 : 1.5,
                 alpha: 0.75
             });
             this._drawOverlayMarker(ctx, overlay.target, {
-                color: isAttack ? '#ff5a36' : '#00ff88',
-                label: isAttack ? 'ATTACK' : 'MOVE',
+                color,
+                label: isAttack ? 'ATTACK' : (isPatrol ? 'PATROL' : 'MOVE'),
                 style: isAttack ? 'crosshair' : 'ring',
                 alpha: 0.85
             });
@@ -4202,6 +4275,10 @@ class GameState {
             }
             if (action === 'scatter') {
                 this.scatterSelectedUnits();
+                return;
+            }
+            if (action === 'patrol') {
+                this.togglePatrolMode();
                 return;
             }
             if (action === 'deploy') {
@@ -4432,17 +4509,17 @@ class GameState {
                     ? `<button class="selection-action" data-action="deploy" ${this.canDeployMCV(s) ? '' : 'disabled'}>Deploy MCV</button>`
                     : '';
                 const commandButtons = this.canUnitReceiveCommand(s)
-                    ? `<button class="selection-action" data-action="stop">Stop</button><button class="selection-action" data-action="scatter">Scatter</button>`
+                    ? `<button class="selection-action" data-action="stop">Stop</button><button class="selection-action" data-action="scatter">Scatter</button><button class="selection-action ${this.commandMode === 'set-patrol' ? 'active' : ''}" data-action="patrol">${this.commandMode === 'set-patrol' ? 'Placing Patrol' : 'Patrol'}</button>`
                     : '';
                 const unloadButton = this.isTransportUnit(s)
                     ? `<button class="selection-action" data-action="unload" ${s.passengers.length ? '' : 'disabled'}>Unload APC</button>`
                     : '';
                 info.innerHTML = `<div style="color:#00ff88">${this.getDisplayName(s.type)}</div>
                     <div>HP: ${Math.floor(s.hp)}/${s.maxHp}</div>
-                    <div>${extras.join(' | ')}</div>
+                    <div>${[...extras, ...(s.patrolRoute?.length === 2 ? [`PATROL: ${Math.round(s.patrolRoute[0].x)}, ${Math.round(s.patrolRoute[0].y)} ⇄ ${Math.round(s.patrolRoute[1].x)}, ${Math.round(s.patrolRoute[1].y)}`] : [])].join(' | ')}</div>
                     ${veterancyBits.length ? `<div style="color:#ffd36b">${veterancyBits.join(' | ')}</div>` : ''}
                     <div style="color:#666;font-size:9px">${s.state}</div>
-                    ${(deployButton || unloadButton || commandButtons) ? `<div class="selection-actions">${deployButton}${unloadButton}${commandButtons}</div><div class="selection-hint">Stop cancels the current order. Scatter sends the selection to nearby offsets. Hotkeys: S / X.</div>` : ''}`;
+                    ${(deployButton || unloadButton || commandButtons) ? `<div class="selection-actions">${deployButton}${unloadButton}${commandButtons}</div><div class="selection-hint">${this.commandMode === 'set-patrol' ? 'Right-click any visible tile to place the patrol turn-around point.' : 'Stop cancels the current order. Scatter sends the selection to nearby offsets. Patrol loops between the current position and a chosen tile. Hotkeys: S / X / P.'}</div>` : ''}`;
             } else {
                 const def = BUILD_TYPES[s.type];
                 const statusBits = [];
@@ -4499,7 +4576,7 @@ class GameState {
                 <div>${fighters} combat | ${harvesters} harvesters</div>
                 <div style="color:#ffd36b">${veterans} veteran | ${elites} elite</div>
                 <div style="color:#666;font-size:9px">Right-click commands apply to combat units only</div>
-                ${commandableUnits.length ? `<div class="selection-actions"><button class="selection-action" data-action="stop">Stop</button><button class="selection-action" data-action="scatter">Scatter</button></div><div class="selection-hint">Stop cancels the current order. Scatter fans the group into nearby positions. Hotkeys: S / X.</div>` : ''}`;
+                ${commandableUnits.length ? `<div class="selection-actions"><button class="selection-action" data-action="stop">Stop</button><button class="selection-action" data-action="scatter">Scatter</button><button class="selection-action ${this.commandMode === 'set-patrol' ? 'active' : ''}" data-action="patrol">${this.commandMode === 'set-patrol' ? 'Placing Patrol' : 'Patrol'}</button></div><div class="selection-hint">${this.commandMode === 'set-patrol' ? 'Right-click any visible tile to place the patrol turn-around point.' : 'Stop cancels the current order. Scatter fans the group into nearby positions. Patrol loops between the current position and a chosen tile. Hotkeys: S / X / P.'}</div>` : ''}`;
         }
     }
 

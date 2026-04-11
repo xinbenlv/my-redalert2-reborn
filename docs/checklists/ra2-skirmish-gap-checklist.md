@@ -169,9 +169,9 @@
 - [x] control groups
 - [ ] stance（guard / aggressive / hold ground）
 - [ ] force move / force fire / guard 等命令
-- [~] scatter / stop 命令（已补 Stop / Scatter 选择面板按钮与 S / X 快捷键；更完整的 force-move / 阵型微操仍未做）
+- [~] scatter / stop 命令（已补 Stop / Scatter / Patrol 选择面板按钮与 S / X / P 快捷键；更完整的 force-move / 阵型微操仍未做）
 - [ ] waypoints
-- [ ] patrol
+- [x] patrol
 - [ ] 单位编队逻辑更像 RTS
 - [ ] 载具碾压步兵
 - [ ] 部署型单位 / 展开型单位
