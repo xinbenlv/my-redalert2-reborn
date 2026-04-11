@@ -7,6 +7,48 @@
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+    <div id="skirmish-setup-overlay">
+        <div class="setup-header">
+            <div>
+                <div class="setup-kicker">SKIRMISH COMMAND</div>
+                <h2>Battlefield Setup</h2>
+            </div>
+            <div id="setup-briefing"></div>
+        </div>
+        <div class="setup-grid">
+            <label>
+                <span>Starting Credits</span>
+                <select id="setup-starting-credits">
+                    <option value="5000">Short Ops — $5000</option>
+                    <option value="6500" selected>Standard — $6500</option>
+                    <option value="10000">Long War — $10000</option>
+                </select>
+            </label>
+            <label>
+                <span>Battlefield</span>
+                <select id="setup-map">
+                    <option value="classic" selected>Classic Frontier</option>
+                    <option value="crossroads">Crossroads</option>
+                </select>
+            </label>
+            <label>
+                <span>Your Faction</span>
+                <select id="setup-player-faction">
+                    <option value="soviet" selected>Soviet</option>
+                    <option value="allied">Allied</option>
+                </select>
+            </label>
+            <label>
+                <span>AI Difficulty</span>
+                <select id="setup-ai-difficulty">
+                    <option value="easy">Easy</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="hard">Hard</option>
+                </select>
+            </label>
+        </div>
+        <button id="skirmish-start-button">Launch Skirmish</button>
+    </div>
     <div id="ui-overlay">
         <div id="top-bar">
             <div id="money-display">CREDITS <span id="money">5000</span></div>

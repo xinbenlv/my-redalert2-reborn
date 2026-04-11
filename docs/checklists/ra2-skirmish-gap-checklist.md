@@ -40,9 +40,9 @@
 - [ ] Construction Yard（基地车展开后的主基地）
 - [ ] MCV（移动基地车）与 deploy 机制
 - [ ] 以 MCV / Construction Yard 为核心的正式开局流程
-- [ ] 正式的遭遇战规则参数（starting credits、short/medium/long game）
+- [x] 正式的遭遇战规则参数（starting credits、short/medium/long game）
 - [ ] 多出生点 / 真正的 spawn logic
-- [ ] 可配置的 skirmish 选项（资金、地图、AI 数量、阵营）
+- [~] 可配置的 skirmish 选项（资金、地图、AI 数量、阵营）
 - [ ] 更完整的失败条件（仅靠剩余单位苟活不够 RA2）
 - [ ] 胜利结算界面 / 战后统计
 
@@ -208,7 +208,7 @@
 - [ ] 建筑选中框 / 血条 / 集结点标记更明显
 - [ ] 鼠标 cursor 全套 RA2-like 状态
 - [ ] 设置菜单 / 暂停菜单 / 退出重开
-- [ ] Skirmish setup 界面
+- [x] Skirmish setup 界面
 
 ## B12. 音频 / 氛围
 - [ ] EVA 语音系统（原创）
@@ -271,7 +271,7 @@
 - [x] waypoint / rally 可视化
 - [x] 基础防御建筑（至少 2 个）
 - [x] AI 护矿与骚扰
-- [ ] 更完整的 skirmish setup
+- [x] 更完整的 skirmish setup
 
 ### C2. P1：把“中局节奏”补出来
 - [ ] Battle Lab

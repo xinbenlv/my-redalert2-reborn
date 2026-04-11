@@ -10,10 +10,85 @@ const MAP_SIZE = 40;
 const BUILD_TYPES = window.BUILD_TYPES;
 const UNIT_TYPES = window.UNIT_TYPES;
 const POWER_SYSTEM = window.POWER_SYSTEM;
+const MATCH_CONFIG_STORAGE_KEY = 'ra2reborn.matchConfig';
+const MATCH_PANEL_COLLAPSED_KEY = 'ra2reborn.setupCollapsed';
+const MAP_PROFILES = {
+    classic: {
+        id: 'classic',
+        name: 'Classic Frontier',
+        briefing: 'Balanced ore clusters with the familiar river split.',
+        spawnPoints: [{ x: 8, y: 8 }, { x: MAP_SIZE - 10, y: MAP_SIZE - 10 }],
+    },
+    crossroads: {
+        id: 'crossroads',
+        name: 'Crossroads',
+        briefing: 'A harder center fight with a broad crossing and exposed ore lanes.',
+        spawnPoints: [{ x: 10, y: 10 }, { x: MAP_SIZE - 13, y: MAP_SIZE - 13 }],
+    },
+};
+const DEFAULT_MATCH_CONFIG = {
+    startingCredits: 6500,
+    map: 'classic',
+    playerFaction: 'soviet',
+    aiDifficulty: 'medium',
+};
+
+function normalizeMatchConfig(config = {}) {
+    const startingCredits = Number(config.startingCredits);
+    const map = MAP_PROFILES[config.map] ? config.map : DEFAULT_MATCH_CONFIG.map;
+    const playerFaction = config.playerFaction === 'allied' ? 'allied' : 'soviet';
+    const aiDifficulty = ['easy', 'medium', 'hard'].includes(config.aiDifficulty) ? config.aiDifficulty : DEFAULT_MATCH_CONFIG.aiDifficulty;
+    return {
+        startingCredits: [5000, 6500, 10000].includes(startingCredits) ? startingCredits : DEFAULT_MATCH_CONFIG.startingCredits,
+        map,
+        playerFaction,
+        aiDifficulty,
+    };
+}
+
+function getStoredMatchConfig() {
+    try {
+        return normalizeMatchConfig(JSON.parse(localStorage.getItem(MATCH_CONFIG_STORAGE_KEY) || '{}'));
+    } catch {
+        return { ...DEFAULT_MATCH_CONFIG };
+    }
+}
+
+function persistMatchConfig(config) {
+    localStorage.setItem(MATCH_CONFIG_STORAGE_KEY, JSON.stringify(normalizeMatchConfig(config)));
+}
+
+function getFactionProfile(faction, role = 'player') {
+    if (faction === 'allied') {
+        return role === 'player'
+            ? { faction: 'allied', color: '#3f7cff' }
+            : { faction: 'soviet', color: '#cc2222' };
+    }
+    return role === 'player'
+        ? { faction: 'soviet', color: '#cc2222' }
+        : { faction: 'allied', color: '#3f7cff' };
+}
+
+function getAIDifficultyProfile(difficulty) {
+    const profiles = {
+        easy: { difficulty: 'easy', decisionMin: 3400, decisionRange: 1800, attackThreshold: 5 },
+        medium: { difficulty: 'medium', decisionMin: 2500, decisionRange: 1500, attackThreshold: 4 },
+        hard: { difficulty: 'hard', decisionMin: 1800, decisionRange: 1100, attackThreshold: 3 },
+    };
+    return profiles[difficulty] || profiles.medium;
+}
+
+function updateSetupBriefing(config) {
+    const normalized = normalizeMatchConfig(config);
+    const briefingEl = document.getElementById('setup-briefing');
+    if (!briefingEl) return;
+    const mapProfile = MAP_PROFILES[normalized.map];
+    briefingEl.textContent = `${mapProfile.name.toUpperCase()} • ${normalized.aiDifficulty.toUpperCase()} AI • $${normalized.startingCredits}`;
+}
 
 // ==================== GAME STATE ====================
 class GameState {
-    constructor() {
+    constructor(matchConfig = DEFAULT_MATCH_CONFIG) {
         // 3D Renderer
         this.renderer3d = new Renderer3D();
         const oldCanvas = document.getElementById('gameCanvas');
@@ -43,15 +118,21 @@ class GameState {
         this.dragStart = null;
         this.isDragging = false;
 
+        this.matchConfig = normalizeMatchConfig(matchConfig);
+        this.mapProfile = MAP_PROFILES[this.matchConfig.map];
+        this.aiConfig = getAIDifficultyProfile(this.matchConfig.aiDifficulty);
+
         // Map
         this.map = [];
         this.fog = [];
         this.generateMap();
 
-        // Players: Human (Red) vs AI (Blue)
+        // Players: Human vs AI
+        const playerFaction = getFactionProfile(this.matchConfig.playerFaction, 'player');
+        const aiFaction = getFactionProfile(this.matchConfig.playerFaction, 'ai');
         this.players = [
-            { faction: 'soviet', money: 6500, buildings: [], units: [], color: '#cc2222', isAI: false, lowPowerNotified: false },
-            { faction: 'soviet', money: 6500, buildings: [], units: [], color: '#2266cc', isAI: true, lowPowerNotified: false }
+            { faction: playerFaction.faction, money: this.matchConfig.startingCredits, buildings: [], units: [], color: playerFaction.color, isAI: false, lowPowerNotified: false },
+            { faction: aiFaction.faction, money: this.matchConfig.startingCredits, buildings: [], units: [], color: aiFaction.color, isAI: true, lowPowerNotified: false }
         ];
         this.currentPlayer = 0;
 
@@ -74,7 +155,7 @@ class GameState {
         this.waterFrame = 0;
         this.waterTimer = 0;
         this.aiTimer = 0;
-        this.aiDecisionInterval = 3000 + Math.random() * 2000;
+        this.aiDecisionInterval = this.aiConfig.decisionMin + Math.random() * this.aiConfig.decisionRange;
 
         // Game over state
         this.gameOver = false;
@@ -90,19 +171,22 @@ class GameState {
         this.renderer3d.buildTerrain(this.map, MAP_SIZE);
 
         // Spawn bases for both players
-        this.spawnBase(0, 8, 8);
-        this.spawnBase(1, MAP_SIZE - 10, MAP_SIZE - 10);
+        this.mapProfile.spawnPoints.forEach((spawn, index) => this.spawnBase(index, spawn.x, spawn.y));
 
         // Set initial camera on player base
-        this.camTileX = 10;
-        this.camTileY = 10;
+        const playerSpawn = this.mapProfile.spawnPoints[0] || { x: 10, y: 10 };
+        this.camTileX = playerSpawn.x + 2;
+        this.camTileY = playerSpawn.y + 2;
         this.renderer3d.setCameraTarget(this.camTileX, this.camTileY);
 
         // Start
         this.setupInput();
         this.setupUI();
         this.setupSidebarToggle();
-        this.eva('Construction complete. Base established. Enemy detected!');
+        const titleEl = document.getElementById('game-title');
+        if (titleEl) titleEl.textContent = `RED ALERT 2: REBORN — ${this.mapProfile.name.toUpperCase()}`;
+        updateSetupBriefing(this.matchConfig);
+        this.eva(`Skirmish loaded: ${this.mapProfile.name}. ${this.aiConfig.difficulty.toUpperCase()} AI standing by.`);
 
         // Version info
         const vEl = document.getElementById('version-info');
@@ -162,22 +246,41 @@ class GameState {
 
     // ==================== MAP GENERATION ====================
     generateMap() {
+        const isCrossroads = this.mapProfile?.id === 'crossroads';
         for (let y = 0; y < MAP_SIZE; y++) {
             this.map[y] = [];
             this.fog[y] = [];
             for (let x = 0; x < MAP_SIZE; x++) {
                 let type = 'grass';
-                const distFromCenter = Math.sqrt((x - MAP_SIZE/2)**2 + (y - MAP_SIZE/2)**2);
+                const dx = x - MAP_SIZE / 2;
+                const dy = y - MAP_SIZE / 2;
+                const distFromCenter = Math.sqrt(dx ** 2 + dy ** 2);
 
                 if (distFromCenter > MAP_SIZE * 0.42) type = 'water';
-                const riverX = MAP_SIZE / 2 + Math.sin(y / 5) * 3;
-                if (Math.abs(x - riverX) < 1.5 && y > 10 && y < MAP_SIZE - 10) type = 'water';
+                if (isCrossroads) {
+                    const verticalRiver = Math.abs(x - MAP_SIZE / 2) < 1.35 && y > 6 && y < MAP_SIZE - 6;
+                    const horizontalRiver = Math.abs(y - MAP_SIZE / 2) < 1.35 && x > 6 && x < MAP_SIZE - 6;
+                    const centralBridge = Math.abs(x - MAP_SIZE / 2) < 3 && Math.abs(y - MAP_SIZE / 2) < 3;
+                    if ((verticalRiver || horizontalRiver) && !centralBridge) type = 'water';
+                } else {
+                    const riverX = MAP_SIZE / 2 + Math.sin(y / 5) * 3;
+                    if (Math.abs(x - riverX) < 1.5 && y > 10 && y < MAP_SIZE - 10) type = 'water';
+                }
 
                 if (type === 'grass') {
-                    const oreDist1 = Math.sqrt((x - 15)**2 + (y - 15)**2);
-                    const oreDist2 = Math.sqrt((x - (MAP_SIZE - 15))**2 + (y - (MAP_SIZE - 15))**2);
-                    const oreDist3 = Math.sqrt((x - MAP_SIZE/2)**2 + (y - MAP_SIZE/2)**2);
-                    if (oreDist1 < 3 || oreDist2 < 3 || oreDist3 < 3) type = 'ore';
+                    const oreFields = isCrossroads
+                        ? [
+                            { x: 10, y: 10, r: 3.2 },
+                            { x: MAP_SIZE - 11, y: MAP_SIZE - 11, r: 3.2 },
+                            { x: MAP_SIZE / 2 - 5, y: MAP_SIZE / 2, r: 2.4 },
+                            { x: MAP_SIZE / 2 + 5, y: MAP_SIZE / 2, r: 2.4 },
+                        ]
+                        : [
+                            { x: 15, y: 15, r: 3 },
+                            { x: MAP_SIZE - 15, y: MAP_SIZE - 15, r: 3 },
+                            { x: MAP_SIZE / 2, y: MAP_SIZE / 2, r: 3 },
+                        ];
+                    if (oreFields.some(field => Math.hypot(x - field.x, y - field.y) < field.r)) type = 'ore';
                 }
 
                 this.map[y][x] = {
@@ -1978,7 +2081,7 @@ class GameState {
         this.aiTimer += dt;
         if (this.aiTimer < this.aiDecisionInterval) return;
         this.aiTimer = 0;
-        this.aiDecisionInterval = 2500 + Math.random() * 1500;
+        this.aiDecisionInterval = this.aiConfig.decisionMin + Math.random() * this.aiConfig.decisionRange;
 
         const ai = this.players[1];
         if (!ai || (ai.buildings.length === 0 && ai.units.length === 0)) return;
@@ -2071,7 +2174,7 @@ class GameState {
             idleCombatUnits = idleCombatUnits.filter(unit => !harasserSet.has(unit));
         }
 
-        if (idleCombatUnits.length >= 4) {
+        if (idleCombatUnits.length >= this.aiConfig.attackThreshold) {
             const target = this.getAIPriorityTarget(ai, enemyPlayer);
             if (target) {
                 this.issueAIAttackOrder(idleCombatUnits, target);
@@ -2741,7 +2844,57 @@ class GameState {
     }
 }
 
+function bindSkirmishSetupPanel() {
+    const overlay = document.getElementById('skirmish-setup-overlay');
+    const startButton = document.getElementById('skirmish-start-button');
+    const controls = {
+        startingCredits: document.getElementById('setup-starting-credits'),
+        map: document.getElementById('setup-map'),
+        playerFaction: document.getElementById('setup-player-faction'),
+        aiDifficulty: document.getElementById('setup-ai-difficulty'),
+    };
+    if (!overlay || !startButton || Object.values(controls).some(control => !control)) return;
+
+    const applyControls = config => {
+        const normalized = normalizeMatchConfig(config);
+        controls.startingCredits.value = String(normalized.startingCredits);
+        controls.map.value = normalized.map;
+        controls.playerFaction.value = normalized.playerFaction;
+        controls.aiDifficulty.value = normalized.aiDifficulty;
+        updateSetupBriefing(normalized);
+    };
+
+    const readControls = () => normalizeMatchConfig({
+        startingCredits: controls.startingCredits.value,
+        map: controls.map.value,
+        playerFaction: controls.playerFaction.value,
+        aiDifficulty: controls.aiDifficulty.value,
+    });
+
+    applyControls(getStoredMatchConfig());
+    Object.values(controls).forEach(control => control.addEventListener('change', () => {
+        const config = readControls();
+        persistMatchConfig(config);
+        updateSetupBriefing(config);
+        overlay.classList.remove('hidden');
+        sessionStorage.removeItem(MATCH_PANEL_COLLAPSED_KEY);
+    }));
+
+    startButton.addEventListener('click', () => {
+        persistMatchConfig(readControls());
+        sessionStorage.setItem(MATCH_PANEL_COLLAPSED_KEY, '1');
+        window.location.reload();
+    });
+
+    if (sessionStorage.getItem(MATCH_PANEL_COLLAPSED_KEY) === '1') {
+        overlay.classList.add('hidden');
+    }
+}
+
 // Start the game!
 window.addEventListener('DOMContentLoaded', () => {
-    window.game = new GameState();
+    const storedConfig = getStoredMatchConfig();
+    persistMatchConfig(storedConfig);
+    bindSkirmishSetupPanel();
+    window.game = new GameState(storedConfig);
 });
