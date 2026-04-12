@@ -233,6 +233,19 @@ window.BUILD_TYPES = {
         description: 'Neutral urban structure that infantry can seize for dense city-block crossfire.',
         prerequisites: []
     },
+    civilianTower: {
+        name: 'Civilian Tower',
+        cost: 0,
+        buildTime: 0,
+        hp: 1400,
+        sight: 8,
+        size: 3,
+        powerSupply: 0,
+        powerDrain: 0,
+        garrisonCapacity: 6,
+        description: 'Tall neutral tower block that turns central lanes into layered urban kill zones when occupied.',
+        prerequisites: []
+    },
     sandbagWall: {
         name: 'Sandbag Wall',
         cost: 100,

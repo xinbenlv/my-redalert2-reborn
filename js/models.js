@@ -1161,6 +1161,105 @@ class ModelFactory {
         return group;
     }
 
+    createCivilianTower(factionColor) {
+        const fc = this._factionColor(factionColor);
+        const group = new THREE.Group();
+
+        const plaza = new THREE.Mesh(
+            new THREE.BoxGeometry(2.9, 0.08, 2.9),
+            this._mat(0x6f6862, { roughness: 0.94, metalness: 0.05 })
+        );
+        plaza.position.y = 0.04;
+        group.add(plaza);
+
+        const podium = new THREE.Mesh(
+            new THREE.BoxGeometry(2.45, 0.46, 2.45),
+            this._mat(0xb6aa9c, { roughness: 0.86, metalness: 0.06 })
+        );
+        podium.position.y = 0.27;
+        podium.castShadow = true;
+        group.add(podium);
+
+        const tower = new THREE.Mesh(
+            new THREE.BoxGeometry(1.72, 1.95, 1.72),
+            this._mat(0xc8bdae, { roughness: 0.82, metalness: 0.08 })
+        );
+        tower.position.y = 1.48;
+        tower.castShadow = true;
+        group.add(tower);
+
+        const roof = new THREE.Mesh(
+            new THREE.BoxGeometry(1.92, 0.12, 1.92),
+            this._mat(0x505860, { roughness: 0.56, metalness: 0.24 })
+        );
+        roof.position.y = 2.5;
+        roof.castShadow = true;
+        group.add(roof);
+
+        const annexes = [
+            [-0.86, 0.7, 0],
+            [0.86, 0.7, 0],
+            [0, 0.7, -0.86],
+            [0, 0.7, 0.86],
+        ];
+        annexes.forEach(([x, y, z]) => {
+            const annex = new THREE.Mesh(
+                new THREE.BoxGeometry(0.58, 0.84, 0.58),
+                this._mat(0xa99c8f, { roughness: 0.84, metalness: 0.05 })
+            );
+            annex.position.set(x, y, z);
+            annex.castShadow = true;
+            group.add(annex);
+        });
+
+        for (let level = 0; level < 5; level += 1) {
+            const y = 0.78 + level * 0.32;
+            [-0.44, 0, 0.44].forEach((x) => {
+                const frontPane = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.22, 0.16, 0.06),
+                    this._mat(0x9dc6d8, { roughness: 0.2, metalness: 0.12, emissive: 0x264050, emissiveIntensity: 0.08 })
+                );
+                frontPane.position.set(x, y, 0.89);
+                group.add(frontPane);
+
+                const backPane = frontPane.clone();
+                backPane.position.z = -0.89;
+                group.add(backPane);
+            });
+
+            [-0.89, 0.89].forEach((x) => {
+                const sidePane = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.06, 0.16, 0.22),
+                    this._mat(0x9dc6d8, { roughness: 0.2, metalness: 0.12, emissive: 0x264050, emissiveIntensity: 0.08 })
+                );
+                sidePane.position.set(x, y, -0.44);
+                group.add(sidePane);
+
+                const mirroredPane = sidePane.clone();
+                mirroredPane.position.z = 0.44;
+                group.add(mirroredPane);
+            });
+        }
+
+        const entry = new THREE.Mesh(
+            new THREE.BoxGeometry(0.42, 0.52, 0.1),
+            this._mat(0x2d3034, { roughness: 0.72, metalness: 0.14 })
+        );
+        entry.position.set(0, 0.34, 1.18);
+        group.add(entry);
+
+        const banner = new THREE.Mesh(
+            new THREE.BoxGeometry(1.16, 0.1, 0.08),
+            this._mat(fc, { roughness: 0.42, metalness: 0.24, emissive: fc, emissiveIntensity: 0.12 })
+        );
+        banner.position.set(0, 2.15, 0.92);
+        group.add(banner);
+
+        group.userData.modelType = 'civilianTower';
+        group.userData.factionColor = fc;
+        return group;
+    }
+
     createSandbagWall(factionColor) {
         const fc = this._factionColor(factionColor);
         const group = new THREE.Group();

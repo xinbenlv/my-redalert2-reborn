@@ -34,6 +34,7 @@ const MAP_PROFILES = {
         neutralStructures: [
             { type: 'battleBunker', x: 20, y: 19 },
             { type: 'civilianBlock', x: 15, y: 14 },
+            { type: 'civilianTower', x: 24, y: 11 },
         ],
     },
     crossroads: {
@@ -48,6 +49,8 @@ const MAP_PROFILES = {
             { type: 'battleBunker', x: 21, y: 21 },
             { type: 'civilianBlock', x: 15, y: 16 },
             { type: 'civilianBlock', x: 23, y: 16 },
+            { type: 'civilianTower', x: 12, y: 13 },
+            { type: 'civilianTower', x: 25, y: 13 },
         ],
     },
     'twin-rivers': {
@@ -60,6 +63,7 @@ const MAP_PROFILES = {
             { type: 'battleBunker', x: 25, y: 18 },
             { type: 'civilianBlock', x: 20, y: 14 },
             { type: 'civilianBlock', x: 20, y: 22 },
+            { type: 'civilianTower', x: 17, y: 10 },
         ],
     },
 };
@@ -2532,6 +2536,7 @@ class GameState {
         unit.x = building.tx + building.size / 2 - 0.5;
         unit.y = building.ty + building.size / 2 - 0.5;
         unit.state = 'loaded';
+        this.renderer3d?.setUnitVisible(unit, false);
         this.refreshGarrisonBuildingStats(building);
         if (this.selected.includes(unit)) {
             this.selected = this.selected.filter(entity => entity !== unit);

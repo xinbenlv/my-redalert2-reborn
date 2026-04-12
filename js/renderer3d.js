@@ -269,6 +269,7 @@ class Renderer3D {
         else if (building.type === 'patriotBattery') mesh = this.models.createPatriotBattery(factionColor);
         else if (building.type === 'battleBunker') mesh = this.models.createBattleBunker(factionColor);
         else if (building.type === 'civilianBlock') mesh = this.models.createCivilianBlock(factionColor);
+        else if (building.type === 'civilianTower') mesh = this.models.createCivilianTower(factionColor);
         else if (building.type === 'sandbagWall') mesh = this.models.createSandbagWall(factionColor);
 
         if (!mesh) return;
@@ -332,6 +333,7 @@ class Renderer3D {
         );
 
         this.scene.add(mesh);
+        if (unit.state === 'loaded') mesh.visible = false;
         this.unitMeshes.set(unit, mesh);
     }
 
@@ -725,6 +727,7 @@ class Renderer3D {
         else if (type === 'patriotBattery') model = this.models.createPatriotBattery(factionColor);
         else if (type === 'battleBunker') model = this.models.createBattleBunker(factionColor);
         else if (type === 'civilianBlock') model = this.models.createCivilianBlock(factionColor);
+        else if (type === 'civilianTower') model = this.models.createCivilianTower(factionColor);
         else if (type === 'sandbagWall') model = this.models.createSandbagWall(factionColor);
         else if (type === 'soldier' || type === 'attackDog' || type === 'rocketInfantry' || type === 'flakTrooper' || type === 'engineer') {
             model = this.models.createSoldier(factionColor);
