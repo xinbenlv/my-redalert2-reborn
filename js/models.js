@@ -2182,6 +2182,124 @@ class ModelFactory {
         return group;
     }
 
+    createTransportHeli(factionColor) {
+        const fc = this._factionColor(factionColor);
+        const group = new THREE.Group();
+
+        const body = new THREE.Mesh(
+            new THREE.BoxGeometry(0.42, 0.24, 1.18),
+            this._mat(0x69727d, { roughness: 0.46, metalness: 0.34 })
+        );
+        body.position.y = 0.12;
+        body.castShadow = true;
+        group.add(body);
+
+        const nose = new THREE.Mesh(
+            new THREE.CapsuleGeometry(0.14, 0.26, 6, 10),
+            this._mat(0x88a1b8, { roughness: 0.34, metalness: 0.3 })
+        );
+        nose.rotation.x = Math.PI / 2;
+        nose.position.set(0, 0.12, 0.74);
+        nose.castShadow = true;
+        group.add(nose);
+
+        const cockpit = new THREE.Mesh(
+            new THREE.BoxGeometry(0.34, 0.16, 0.24),
+            this._mat(0x6ed7ff, { emissive: 0x2c88b2, emissiveIntensity: 0.18, roughness: 0.18, metalness: 0.24 })
+        );
+        cockpit.position.set(0, 0.22, 0.36);
+        cockpit.castShadow = true;
+        group.add(cockpit);
+
+        const tailBoom = new THREE.Mesh(
+            new THREE.BoxGeometry(0.12, 0.12, 0.92),
+            this._mat(0x525961, { roughness: 0.5, metalness: 0.26 })
+        );
+        tailBoom.position.set(0, 0.14, -0.96);
+        tailBoom.castShadow = true;
+        group.add(tailBoom);
+
+        const tailFin = new THREE.Mesh(
+            new THREE.BoxGeometry(0.08, 0.38, 0.22),
+            this._mat(fc, { roughness: 0.4, metalness: 0.28, emissive: fc, emissiveIntensity: 0.08 })
+        );
+        tailFin.position.set(0, 0.38, -1.26);
+        tailFin.castShadow = true;
+        group.add(tailFin);
+
+        for (const x of [-0.46, 0.46]) {
+            const stubWing = new THREE.Mesh(
+                new THREE.BoxGeometry(0.44, 0.05, 0.2),
+                this._mat(fc, { roughness: 0.4, metalness: 0.34, emissive: fc, emissiveIntensity: 0.08 })
+            );
+            stubWing.position.set(x, 0.08, -0.08);
+            stubWing.castShadow = true;
+            group.add(stubWing);
+
+            const engine = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.1, 0.1, 0.38, 10),
+                this._mat(0x3f454d, { roughness: 0.48, metalness: 0.4 })
+            );
+            engine.rotation.z = Math.PI / 2;
+            engine.position.set(x, 0.18, -0.08);
+            engine.castShadow = true;
+            group.add(engine);
+        }
+
+        const rotorMast = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.03, 0.03, 0.2, 8),
+            this._mat(0x23262b, { roughness: 0.58, metalness: 0.22 })
+        );
+        rotorMast.position.set(0, 0.36, -0.05);
+        rotorMast.castShadow = true;
+        group.add(rotorMast);
+
+        const rotorHub = new THREE.Group();
+        rotorHub.position.set(0, 0.46, -0.05);
+        const rotorMat = this._mat(0x1d2126, { roughness: 0.62, metalness: 0.22 });
+        for (let i = 0; i < 4; i += 1) {
+            const blade = new THREE.Mesh(new THREE.BoxGeometry(1.34, 0.015, 0.09), rotorMat);
+            blade.rotation.y = (Math.PI / 2) * i;
+            blade.castShadow = true;
+            rotorHub.add(blade);
+        }
+        group.add(rotorHub);
+        group.userData.rotor = rotorHub;
+
+        const tailRotor = new THREE.Group();
+        tailRotor.position.set(0.18, 0.3, -1.42);
+        for (let i = 0; i < 4; i += 1) {
+            const blade = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.015, 0.04), rotorMat);
+            blade.rotation.z = (Math.PI / 2) * i;
+            blade.castShadow = true;
+            tailRotor.add(blade);
+        }
+        group.add(tailRotor);
+        group.userData.tailRotor = tailRotor;
+
+        for (const x of [-0.2, 0.2]) {
+            const skid = new THREE.Mesh(
+                new THREE.BoxGeometry(0.06, 0.05, 1.08),
+                this._mat(0x3f444a, { roughness: 0.58, metalness: 0.24 })
+            );
+            skid.position.set(x, -0.08, -0.02);
+            skid.castShadow = true;
+            group.add(skid);
+        }
+
+        const cargoBay = new THREE.Mesh(
+            new THREE.BoxGeometry(0.3, 0.16, 0.34),
+            this._mat(fc, { roughness: 0.42, metalness: 0.24, emissive: fc, emissiveIntensity: 0.06 })
+        );
+        cargoBay.position.set(0, 0.02, -0.18);
+        cargoBay.castShadow = true;
+        group.add(cargoBay);
+
+        group.userData.modelType = 'transportHeli';
+        group.userData.factionColor = fc;
+        return group;
+    }
+
     createKirov(factionColor) {
         const fc = this._factionColor(factionColor);
         const group = new THREE.Group();

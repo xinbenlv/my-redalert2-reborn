@@ -323,6 +323,7 @@ class Renderer3D {
         else if (unit.type === 'apocalypseTank') mesh = this.models.createApocalypseTank(factionColor);
         else if (unit.type === 'prismTank') mesh = this.models.createPrismTank(factionColor);
         else if (unit.type === 'harrier') mesh = this.models.createHarrier(factionColor);
+        else if (unit.type === 'transportHeli') mesh = this.models.createTransportHeli(factionColor);
         else if (unit.type === 'kirov') mesh = this.models.createKirov(factionColor);
         if (!mesh) return;
 
@@ -403,10 +404,15 @@ class Renderer3D {
                 const wobble = unit.type === 'artillery' ? 0.025 : (unit.type === 'apocalypseTank' ? 0.03 : (unit.type === 'prismTank' ? 0.022 : (unit.type === 'flakTrack' ? 0.035 : (unit.type === 'ifv' ? 0.032 : (unit.type === 'apc' ? 0.028 : 0.02)))));
                 mesh.userData.turret.rotation.y = Math.sin(this.time * 0.8 + unit.x) * wobble;
             }
-        } else if (unit.type === 'harrier' || unit.type === 'kirov') {
+        } else if (unit.type === 'harrier' || unit.type === 'transportHeli' || unit.type === 'kirov') {
             const isKirov = unit.type === 'kirov';
-            mesh.rotation.x = Math.sin(this.time * (isKirov ? 2.2 : 5) + unit.x * 0.7) * (isKirov ? 0.035 : 0.08);
-            mesh.position.y = (unit.altitude || (isKirov ? 1.45 : 1.1)) + Math.sin(this.time * (isKirov ? 2.6 : 4) + unit.y) * (isKirov ? 0.03 : 0.06);
+            const isTransportHeli = unit.type === 'transportHeli';
+            mesh.rotation.x = Math.sin(this.time * (isKirov ? 2.2 : (isTransportHeli ? 3.4 : 5)) + unit.x * 0.7) * (isKirov ? 0.035 : (isTransportHeli ? 0.045 : 0.08));
+            mesh.position.y = (unit.altitude || (isKirov ? 1.45 : (isTransportHeli ? 1.25 : 1.1))) + Math.sin(this.time * (isKirov ? 2.6 : (isTransportHeli ? 3.1 : 4)) + unit.y) * (isKirov ? 0.03 : (isTransportHeli ? 0.045 : 0.06));
+            if (isTransportHeli) {
+                if (mesh.userData.rotor) mesh.userData.rotor.rotation.y += dt * 0.028;
+                if (mesh.userData.tailRotor) mesh.userData.tailRotor.rotation.x += dt * 0.05;
+            }
             const flashing = unit.fireRate > 0 && unit.fireTimer > unit.fireRate - (isKirov ? 220 : 160);
             this.models.flashMuzzle(mesh, flashing);
         } else if (unit.type === 'harvester') {

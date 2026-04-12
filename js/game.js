@@ -5650,7 +5650,7 @@ class GameState {
                 if (this.isTransportUnit(selectedUnit) && selectedUnit.passengers.length) {
                     this.unloadTransport(selectedUnit, selectedUnit.x, selectedUnit.y);
                     selectedUnit.state = 'idle';
-                    this.eva('APC unloading passengers.');
+                    this.eva(`${this.getDisplayName(selectedUnit.type)} unloading passengers.`);
                     this.updateSelectionInfo();
                 }
                 return;
@@ -5695,11 +5695,11 @@ class GameState {
                 this.addBuildItem(container, type, def.name, def.cost, def.description, false);
             });
         } else {
-            ['soldier', 'attackDog', 'rocketInfantry', 'flakTrooper', 'engineer', 'gi', 'harvester', 'tank', 'apc', 'ifv', 'flakTrack', 'artillery', 'prismTank', 'harrier', 'kirov', 'apocalypseTank', 'mcv'].forEach(type => {
+            ['soldier', 'attackDog', 'rocketInfantry', 'flakTrooper', 'engineer', 'gi', 'harvester', 'tank', 'apc', 'ifv', 'flakTrack', 'artillery', 'prismTank', 'harrier', 'transportHeli', 'kirov', 'apocalypseTank', 'mcv'].forEach(type => {
                 const def = UNIT_TYPES[type];
                 const description = type === 'engineer'
                     ? 'Captures enemy buildings on contact.'
-                    : (type === 'attackDog' ? 'Melee anti-infantry interceptor.' : (type === 'gi' ? 'Deployable anti-infantry rifleman that trades mobility for range.' : def.role));
+                    : (type === 'attackDog' ? 'Melee anti-infantry interceptor.' : (type === 'gi' ? 'Deployable anti-infantry rifleman that trades mobility for range.' : (type === 'transportHeli' ? 'Airlift transport for rapid infantry insertion and extraction.' : def.role)));
                 this.addBuildItem(container, type, def.name, def.cost, description, true);
             });
         }
@@ -5883,7 +5883,7 @@ class GameState {
                     ? `<button class="selection-action" data-action="stop">Stop</button><button class="selection-action" data-action="scatter">Scatter</button><button class="selection-action ${this.commandMode === 'set-guard' ? 'active' : ''}" data-action="guard">${this.commandMode === 'set-guard' ? 'Placing Guard' : 'Guard'}</button>${this.canUnitForceFire(s) ? `<button class="selection-action ${this.commandMode === 'set-force-fire' ? 'active' : ''}" data-action="force-fire">${this.commandMode === 'set-force-fire' ? 'Placing Force Fire' : 'Force Fire'}</button>` : ''}<button class="selection-action ${this.commandMode === 'set-force-move' ? 'active' : ''}" data-action="force-move">${this.commandMode === 'set-force-move' ? 'Placing Force Move' : 'Force Move'}</button><button class="selection-action ${this.commandMode === 'set-patrol' ? 'active' : ''}" data-action="patrol">${this.commandMode === 'set-patrol' ? 'Placing Patrol' : 'Patrol'}</button>${stanceButtons}`
                     : '';
                 const unloadButton = this.isTransportUnit(s)
-                    ? `<button class="selection-action" data-action="unload" ${s.passengers.length ? '' : 'disabled'}>Unload APC</button>`
+                    ? `<button class="selection-action" data-action="unload" ${s.passengers.length ? '' : 'disabled'}>Unload ${this.getDisplayName(s.type)}</button>`
                     : '';
                 const selectionHint = this.canToggleUnitDeploy(s) && s.isDeployed
                     ? 'This GI is deployed and cannot move until you undeploy it. Press D or use Undeploy GI to pack up.'

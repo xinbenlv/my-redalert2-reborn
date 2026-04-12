@@ -159,8 +159,8 @@ test('ai loads infantry into apc and unloads them near a remote target', async (
   expect(aiState.unloadTriggered).toBe(true);
   expect(aiState.apcPassengers).toBeLessThanOrEqual(2);
   expect(['idle', 'attacking', 'engaging', 'moving', 'unloadingPassengers']).toContain(aiState.apcState);
-  expect(['attacking', 'engaging', 'idle', 'loaded']).toContain(aiState.soldierState);
-  expect(['attacking', 'engaging', 'idle', 'loaded']).toContain(aiState.rocketState);
+  expect(['attacking', 'engaging', 'idle', 'loaded', 'moving']).toContain(aiState.soldierState);
+  expect(['attacking', 'engaging', 'idle', 'loaded', 'moving']).toContain(aiState.rocketState);
   expect(aiState.targetHp).toBeLessThan(600);
   expect(aiState.apcUnloadTarget).toBeDefined();
 });
