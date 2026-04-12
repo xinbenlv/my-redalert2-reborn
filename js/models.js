@@ -2083,6 +2083,110 @@ class ModelFactory {
         return group;
     }
 
+    createKirov(factionColor) {
+        const fc = this._factionColor(factionColor);
+        const group = new THREE.Group();
+
+        const envelope = new THREE.Mesh(
+            new THREE.SphereGeometry(0.52, 18, 14),
+            this._mat(0x8a8f98, { roughness: 0.52, metalness: 0.28 })
+        );
+        envelope.scale.set(1.65, 0.95, 2.5);
+        envelope.position.y = 0.42;
+        envelope.castShadow = true;
+        group.add(envelope);
+
+        const noseCap = new THREE.Mesh(
+            new THREE.SphereGeometry(0.24, 14, 12),
+            this._mat(0xb8bec6, { roughness: 0.4, metalness: 0.26 })
+        );
+        noseCap.scale.set(1.1, 0.78, 0.95);
+        noseCap.position.set(0, 0.42, 1.62);
+        noseCap.castShadow = true;
+        group.add(noseCap);
+
+        const tailFin = new THREE.Mesh(
+            new THREE.BoxGeometry(0.16, 0.62, 0.5),
+            this._mat(fc, { roughness: 0.36, metalness: 0.32, emissive: fc, emissiveIntensity: 0.1 })
+        );
+        tailFin.position.set(0, 0.7, -1.3);
+        tailFin.castShadow = true;
+        group.add(tailFin);
+
+        for (const x of [-0.34, 0.34]) {
+            const stabilizer = new THREE.Mesh(
+                new THREE.BoxGeometry(0.56, 0.07, 0.36),
+                this._mat(fc, { roughness: 0.38, metalness: 0.28 })
+            );
+            stabilizer.position.set(x, 0.38, -1.08);
+            stabilizer.rotation.z = x < 0 ? 0.12 : -0.12;
+            stabilizer.castShadow = true;
+            group.add(stabilizer);
+        }
+
+        const gondola = new THREE.Mesh(
+            new THREE.BoxGeometry(0.64, 0.22, 1.18),
+            this._mat(0x4f5660, { roughness: 0.48, metalness: 0.36 })
+        );
+        gondola.position.set(0, -0.08, 0.16);
+        gondola.castShadow = true;
+        group.add(gondola);
+
+        const bridge = new THREE.Mesh(
+            new THREE.BoxGeometry(0.3, 0.16, 0.3),
+            this._mat(0x6ed7ff, { emissive: 0x2c88b2, emissiveIntensity: 0.22, roughness: 0.18, metalness: 0.26 })
+        );
+        bridge.position.set(0, 0.04, 0.58);
+        bridge.castShadow = true;
+        group.add(bridge);
+
+        for (const z of [-0.46, 0.46]) {
+            const support = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.03, 0.03, 0.58, 8),
+                this._mat(0x6c737c, { roughness: 0.56, metalness: 0.22 })
+            );
+            support.position.set(-0.18, 0.16, z);
+            support.rotation.z = 0.2;
+            support.castShadow = true;
+            group.add(support);
+            const supportMirror = support.clone();
+            supportMirror.position.x = 0.18;
+            supportMirror.rotation.z = -0.2;
+            group.add(supportMirror);
+        }
+
+        for (const x of [-0.92, 0.92]) {
+            const enginePod = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.12, 0.12, 0.44, 12),
+                this._mat(0x454b53, { roughness: 0.45, metalness: 0.42 })
+            );
+            enginePod.rotation.z = Math.PI / 2;
+            enginePod.position.set(x, 0.06, -0.12);
+            enginePod.castShadow = true;
+            group.add(enginePod);
+        }
+
+        for (const z of [-0.24, 0.24]) {
+            const bomb = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.07, 0.11, 0.28, 10),
+                this._mat(0x2c3137, { roughness: 0.62, metalness: 0.26 })
+            );
+            bomb.rotation.x = Math.PI / 2;
+            bomb.position.set(0, -0.2, z);
+            bomb.castShadow = true;
+            group.add(bomb);
+        }
+
+        const engineGlow = new THREE.PointLight(0xff9d42, 1.2, 4.5);
+        engineGlow.position.set(0, 0.06, -1.7);
+        group.add(engineGlow);
+        group.userData.muzzleFlash = engineGlow;
+
+        group.userData.modelType = 'kirov';
+        group.userData.factionColor = fc;
+        return group;
+    }
+
     // ==================== ORE CRYSTALS ====================
 
     createOreCrystal(resourceType = 'ore') {

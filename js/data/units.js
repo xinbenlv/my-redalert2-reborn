@@ -350,5 +350,36 @@ window.UNIT_TYPES = {
         reloadAmount: 1,
         producedBy: 'airfield',
         prerequisites: ['airfield']
+    },
+    kirov: {
+        name: 'Kirov Airship',
+        cost: 2200,
+        trainTime: 15000,
+        hp: 360,
+        speed: 0.68,
+        damage: 110,
+        range: 6.8,
+        fireRate: 3200,
+        sight: 9,
+        armorType: 'air',
+        role: 'heavy siege bomber',
+        projectileSpeed: 7.2,
+        weaponType: 'bomb',
+        damageProfile: {
+            infantry: 0.95,
+            light: 1.4,
+            heavy: 1.55,
+            building: 2.2,
+            air: 0
+        },
+        canAttackGround: true,
+        canAttackAir: false,
+        isAirUnit: true,
+        flightAltitude: 1.45,
+        ammoCapacity: 1,
+        reloadTime: 3200,
+        reloadAmount: 1,
+        producedBy: 'airfield',
+        prerequisites: ['airfield', 'battleLab']
     }
 };

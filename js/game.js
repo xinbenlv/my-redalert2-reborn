@@ -4835,8 +4835,18 @@ class GameState {
         }
 
         const aiHarrierCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'harrier').length + this._getTotalTrainQueue(ai, 'harrier');
+        const aiKirovCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'kirov').length + this._getTotalTrainQueue(ai, 'kirov');
         const enemyEcoTargets = enemyPlayer.units.filter(u => u.state !== 'dead' && u.type === 'harvester').length + enemyPlayer.buildings.filter(b => b.built && b.hp > 0 && (b.type === 'refinery' || b.type === 'powerPlant')).length;
         const desiredHarrierCount = Math.max(0, this.aiConfig.desiredHarriers + this.aiConfig.desiredHarriersBonus);
+        const wantsKirovSiege = this.aiConfig.buildOrder === 'air' || this.aiConfig.buildOrder === 'fortified';
+        const desiredKirovCount = enemyBuildings >= 9 || enemyDefenses >= 3 ? 2 : 1;
+        if (!antiAirEmergency && builtTypes.has('battleLab') && airfields.length > 0 && ai.money >= UNIT_TYPES.kirov.cost && wantsKirovSiege && (enemyDefenses >= 2 || enemyBuildings >= 7) && aiKirovCount < desiredKirovCount) {
+            const airfield = airfields.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
+            ai.money -= UNIT_TYPES.kirov.cost;
+            if (!airfield.training) airfield.training = 'kirov';
+            else airfield.trainQueue.push('kirov');
+            return;
+        }
         const shouldPrioritizeHarriers = !antiAirEmergency && airfields.length > 0 && ai.money >= UNIT_TYPES.harrier.cost && (enemyDefenses >= 1 || enemyEcoTargets >= 2 || enemyBuildings >= 5 || this.aiConfig.buildOrder === 'air') && aiHarrierCount < desiredHarrierCount;
         if (shouldPrioritizeHarriers) {
             const airfield = airfields.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
@@ -5499,7 +5509,7 @@ class GameState {
                 this.addBuildItem(container, type, def.name, def.cost, def.description, false);
             });
         } else {
-            ['soldier', 'attackDog', 'rocketInfantry', 'flakTrooper', 'engineer', 'harvester', 'tank', 'apc', 'ifv', 'flakTrack', 'artillery', 'prismTank', 'harrier', 'apocalypseTank', 'mcv'].forEach(type => {
+            ['soldier', 'attackDog', 'rocketInfantry', 'flakTrooper', 'engineer', 'harvester', 'tank', 'apc', 'ifv', 'flakTrack', 'artillery', 'prismTank', 'harrier', 'kirov', 'apocalypseTank', 'mcv'].forEach(type => {
                 const def = UNIT_TYPES[type];
                 const description = type === 'engineer'
                     ? 'Captures enemy buildings on contact.'

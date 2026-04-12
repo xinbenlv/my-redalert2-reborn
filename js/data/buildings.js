@@ -127,8 +127,8 @@ window.BUILD_TYPES = {
         size: 2,
         powerSupply: 0,
         powerDrain: 40,
-        production: ['harrier'],
-        description: 'Launches fast strike aircraft for surgical base raids.',
+        production: ['harrier', 'kirov'],
+        description: 'Launches strike aircraft and heavy siege bombers for surgical base raids.',
         prerequisites: ['constructionYard', 'powerPlant', 'radarDome', 'warFactory']
     },
     pillbox: {

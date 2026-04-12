@@ -322,6 +322,7 @@ class Renderer3D {
         else if (unit.type === 'apocalypseTank') mesh = this.models.createApocalypseTank(factionColor);
         else if (unit.type === 'prismTank') mesh = this.models.createPrismTank(factionColor);
         else if (unit.type === 'harrier') mesh = this.models.createHarrier(factionColor);
+        else if (unit.type === 'kirov') mesh = this.models.createKirov(factionColor);
         if (!mesh) return;
 
         mesh.position.set(
@@ -398,10 +399,11 @@ class Renderer3D {
                 const wobble = unit.type === 'artillery' ? 0.025 : (unit.type === 'apocalypseTank' ? 0.03 : (unit.type === 'prismTank' ? 0.022 : (unit.type === 'flakTrack' ? 0.035 : (unit.type === 'ifv' ? 0.032 : (unit.type === 'apc' ? 0.028 : 0.02)))));
                 mesh.userData.turret.rotation.y = Math.sin(this.time * 0.8 + unit.x) * wobble;
             }
-        } else if (unit.type === 'harrier') {
-            mesh.rotation.x = Math.sin(this.time * 5 + unit.x * 0.7) * 0.08;
-            mesh.position.y = (unit.altitude || 1.1) + Math.sin(this.time * 4 + unit.y) * 0.06;
-            const flashing = unit.fireRate > 0 && unit.fireTimer > unit.fireRate - 160;
+        } else if (unit.type === 'harrier' || unit.type === 'kirov') {
+            const isKirov = unit.type === 'kirov';
+            mesh.rotation.x = Math.sin(this.time * (isKirov ? 2.2 : 5) + unit.x * 0.7) * (isKirov ? 0.035 : 0.08);
+            mesh.position.y = (unit.altitude || (isKirov ? 1.45 : 1.1)) + Math.sin(this.time * (isKirov ? 2.6 : 4) + unit.y) * (isKirov ? 0.03 : 0.06);
+            const flashing = unit.fireRate > 0 && unit.fireTimer > unit.fireRate - (isKirov ? 220 : 160);
             this.models.flashMuzzle(mesh, flashing);
         } else if (unit.type === 'harvester') {
             mesh.rotation.x = 0;
@@ -758,6 +760,10 @@ class Renderer3D {
             model = this.models.createHarrier(factionColor);
             model.scale.setScalar(2.25);
             model.rotation.x = -0.28;
+        } else if (type === 'kirov') {
+            model = this.models.createKirov(factionColor);
+            model.scale.setScalar(1.65);
+            model.rotation.x = -0.12;
         }
 
         if (model) {
