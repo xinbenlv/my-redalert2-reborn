@@ -15,7 +15,7 @@ else
     exit 1
 fi
 
-VERSION="0.3.59"
+VERSION="0.3.60"
 DATE=$(date -u +"%Y-%m-%d")
 echo "window.__VERSION__='${VERSION}';window.__GIT_HASH__='${HASH}';window.__BUILD_DATE__='${DATE}';" > js/version.js
 echo "Built version ${VERSION} (${HASH}) on ${DATE}"
