@@ -75,8 +75,8 @@ window.BUILD_TYPES = {
         size: 2,
         powerSupply: 0,
         powerDrain: 25,
-        production: ['soldier', 'attackDog', 'rocketInfantry', 'flakTrooper', 'engineer', 'gi'],
-        description: 'Trains infantry, attack dogs, engineers, and deployable GIs.',
+        production: ['soldier', 'attackDog', 'rocketInfantry', 'flakTrooper', 'engineer', 'gi', 'teslaTrooper'],
+        description: 'Trains infantry, attack dogs, engineers, deployable GIs, and high-tech Tesla shock troopers.',
         prerequisites: ['constructionYard', 'powerPlant']
     },
     radarDome: {

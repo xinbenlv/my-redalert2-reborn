@@ -312,7 +312,7 @@ class Renderer3D {
         if (this.unitMeshes.has(unit)) return;
 
         let mesh;
-        if (unit.type === 'soldier' || unit.type === 'attackDog' || unit.type === 'rocketInfantry' || unit.type === 'flakTrooper' || unit.type === 'engineer' || unit.type === 'gi') mesh = this.models.createSoldier(factionColor);
+        if (unit.type === 'soldier' || unit.type === 'attackDog' || unit.type === 'rocketInfantry' || unit.type === 'flakTrooper' || unit.type === 'engineer' || unit.type === 'gi' || unit.type === 'teslaTrooper') mesh = this.models.createSoldier(factionColor);
         else if (unit.type === 'harvester') mesh = this.models.createHarvester(factionColor);
         else if (unit.type === 'mcv') mesh = this.models.createMCV(factionColor);
         else if (unit.type === 'tank') mesh = this.models.createTank(factionColor);
@@ -380,7 +380,7 @@ class Renderer3D {
                 }
             });
             this.models.flashMuzzle(mesh, false);
-        } else if (unit.type === 'soldier' || unit.type === 'attackDog' || unit.type === 'rocketInfantry' || unit.type === 'flakTrooper' || unit.type === 'engineer' || unit.type === 'gi') {
+        } else if (unit.type === 'soldier' || unit.type === 'attackDog' || unit.type === 'rocketInfantry' || unit.type === 'flakTrooper' || unit.type === 'engineer' || unit.type === 'gi' || unit.type === 'teslaTrooper') {
             mesh.rotation.x = 0;
             mesh.scale.y = unit.isDeployed ? 0.58 : 1;
             mesh.scale.x = mesh.scale.z = unit.isDeployed ? 1.08 : 1;
@@ -737,7 +737,7 @@ class Renderer3D {
         else if (type === 'civilianBlock') model = this.models.createCivilianBlock(factionColor);
         else if (type === 'civilianTower') model = this.models.createCivilianTower(factionColor);
         else if (type === 'sandbagWall') model = this.models.createSandbagWall(factionColor);
-        else if (type === 'soldier' || type === 'attackDog' || type === 'rocketInfantry' || type === 'flakTrooper' || type === 'engineer' || type === 'gi') {
+        else if (type === 'soldier' || type === 'attackDog' || type === 'rocketInfantry' || type === 'flakTrooper' || type === 'engineer' || type === 'gi' || type === 'teslaTrooper') {
             model = this.models.createSoldier(factionColor);
             model.scale.setScalar(4);
         } else if (type === 'harvester') {

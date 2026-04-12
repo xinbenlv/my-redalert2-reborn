@@ -121,6 +121,31 @@ window.UNIT_TYPES = {
         producedBy: 'barracks',
         prerequisites: ['barracks', 'powerPlant']
     },
+    teslaTrooper: {
+        name: 'Tesla Trooper',
+        cost: 700,
+        trainTime: 6800,
+        hp: 110,
+        speed: 0.9,
+        damage: 42,
+        range: 5.4,
+        fireRate: 1450,
+        sight: 7,
+        armorType: 'light',
+        role: 'shock infantry',
+        projectileSpeed: 0,
+        weaponType: 'tesla',
+        directFire: true,
+        damageProfile: {
+            infantry: 0.75,
+            light: 1.2,
+            heavy: 1.55,
+            building: 0.95,
+            air: 0
+        },
+        producedBy: 'barracks',
+        prerequisites: ['barracks', 'battleLab']
+    },
     attackDog: {
         name: 'Attack Dog',
         cost: 300,

@@ -143,8 +143,8 @@ const VETERANCY_BONUSES = {
     veteran: { hp: 1.12, damage: 1.15, fireRate: 0.9 },
     elite: { hp: 1.28, damage: 1.3, fireRate: 0.8 },
 };
-const TRANSPORTABLE_INFANTRY_TYPES = new Set(['soldier', 'rocketInfantry', 'flakTrooper', 'engineer', 'gi']);
-const NON_VEHICLE_ROLES = new Set(['infantry', 'deployable infantry', 'anti-armor infantry', 'anti-air infantry', 'engineer', 'attack dog']);
+const TRANSPORTABLE_INFANTRY_TYPES = new Set(['soldier', 'rocketInfantry', 'flakTrooper', 'engineer', 'gi', 'teslaTrooper']);
+const NON_VEHICLE_ROLES = new Set(['infantry', 'deployable infantry', 'anti-armor infantry', 'anti-air infantry', 'shock infantry', 'engineer', 'attack dog']);
 const MAX_SKIRMISH_TEAM = 4;
 const UNIT_STANCE_ORDER = ['guard', 'aggressive', 'hold'];
 const UNIT_STANCE_PROFILES = {
@@ -1391,7 +1391,7 @@ class GameState {
         if (!target) return 'light';
         if (this.isAirUnit(target)) return 'air';
         if (target.tx !== undefined) return 'building';
-        if (target.role === 'infantry' || target.role === 'deployable infantry' || target.role === 'anti-armor infantry' || target.role === 'anti-air infantry' || target.role === 'engineer' || target.role === 'attack dog') {
+        if (target.role === 'infantry' || target.role === 'deployable infantry' || target.role === 'anti-armor infantry' || target.role === 'anti-air infantry' || target.role === 'shock infantry' || target.role === 'engineer' || target.role === 'attack dog') {
             return 'infantry';
         }
         return target.armorType || 'light';
@@ -5074,6 +5074,7 @@ class GameState {
         }
 
         const aiRocketCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'rocketInfantry').length + this._getTotalTrainQueue(ai, 'rocketInfantry');
+        const aiTeslaCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'teslaTrooper').length + this._getTotalTrainQueue(ai, 'teslaTrooper');
         const aiSoldierCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'soldier').length + this._getTotalTrainQueue(ai, 'soldier');
         const aiAttackDogCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'attackDog').length + this._getTotalTrainQueue(ai, 'attackDog');
 
@@ -5082,12 +5083,16 @@ class GameState {
             let infantryChoice = 'soldier';
             if ((antiAirEmergency || enemyAirPressure >= 2) && aiFlakCount < desiredFlakTrooperCount && ai.money >= UNIT_TYPES.flakTrooper.cost) {
                 infantryChoice = 'flakTrooper';
+            } else if (builtTypes.has('battleLab') && enemyHeavyUnits >= 2 && aiTeslaCount < Math.max(1, Math.ceil(enemyHeavyUnits / 2)) && ai.money >= UNIT_TYPES.teslaTrooper.cost) {
+                infantryChoice = 'teslaTrooper';
             } else if (enemyHeavyUnits > aiRocketCount && ai.money >= UNIT_TYPES.rocketInfantry.cost) {
                 infantryChoice = 'rocketInfantry';
             } else if (enemyInfantryUnits >= 3 && aiAttackDogCount < Math.ceil(enemyInfantryUnits / 2) && ai.money >= UNIT_TYPES.attackDog.cost) {
                 infantryChoice = 'attackDog';
             } else if (enemyInfantryUnits > aiFlakCount + 1 && ai.money >= UNIT_TYPES.flakTrooper.cost) {
                 infantryChoice = 'flakTrooper';
+            } else if (builtTypes.has('battleLab') && aiTeslaCount < 1 && enemyBuildings >= 5 && ai.money >= UNIT_TYPES.teslaTrooper.cost) {
+                infantryChoice = 'teslaTrooper';
             } else if (aiSoldierCount > 0 && aiSoldierCount % 3 === 0 && ai.money >= UNIT_TYPES.rocketInfantry.cost) {
                 infantryChoice = 'rocketInfantry';
             } else if (aiSoldierCount > 1 && aiSoldierCount % 2 === 0 && ai.money >= UNIT_TYPES.flakTrooper.cost) {
@@ -5712,11 +5717,12 @@ class GameState {
                 this.addBuildItem(container, type, def.name, def.cost, def.description, false);
             });
         } else {
-            ['soldier', 'attackDog', 'rocketInfantry', 'flakTrooper', 'engineer', 'gi', 'harvester', 'tank', 'apc', 'ifv', 'flakTrack', 'artillery', 'prismTank', 'harrier', 'transportHeli', 'kirov', 'apocalypseTank', 'mcv'].forEach(type => {
+            ['soldier', 'attackDog', 'rocketInfantry', 'flakTrooper', 'engineer', 'gi', 'teslaTrooper', 'harvester', 'tank', 'apc', 'ifv', 'flakTrack', 'artillery', 'prismTank', 'harrier', 'transportHeli', 'kirov', 'apocalypseTank', 'mcv'].forEach(type => {
                 const def = UNIT_TYPES[type];
+                if (!def) return;
                 const description = type === 'engineer'
-                    ? 'Captures enemy buildings on contact.'
-                    : (type === 'attackDog' ? 'Melee anti-infantry interceptor.' : (type === 'gi' ? 'Deployable anti-infantry rifleman that trades mobility for range.' : (type === 'transportHeli' ? 'Airlift transport for rapid infantry insertion and extraction.' : def.role)));
+                    ? 'Captures enemy and neutral buildings instead of damaging them.'
+                    : (type === 'attackDog' ? 'Melee anti-infantry interceptor.' : (type === 'gi' ? 'Deployable anti-infantry rifleman that trades mobility for range.' : (type === 'teslaTrooper' ? 'Battle Lab shock infantry that melts armor with direct-fire tesla arcs.' : (type === 'transportHeli' ? 'Airlift transport for rapid infantry insertion and extraction.' : def.role))));
                 this.addBuildItem(container, type, def.name, def.cost, description, true);
             });
         }
