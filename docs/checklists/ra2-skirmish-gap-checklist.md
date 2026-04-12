@@ -116,7 +116,7 @@
 
 ### B4.3 空军
 - [x] Harrier / Black Eagle（当前已补 Harrier）
-- [~] Helicopter / transport air（已补 Transport Helicopter 空运单位：可从 Airfield 生产、执行步兵装载/空投与空中快速转场；更复杂的空运 AI 投送与专用空运交战反馈仍未完成）
+- [~] Helicopter / transport air（已补 Transport Helicopter 空运单位：可从 Airfield 生产、执行步兵装载/空投与空中快速转场，并且 AI 现已会在远距离空军流战局中排产 Transport Helicopter、装载步兵并对关键目标执行空投突击；更复杂的多机协同空运与专用空运交战反馈仍未完成）
 - [x] Air unit ammo / return-to-base / rearm 机制
 - [x] 防空锁定与空袭反馈
 
@@ -275,7 +275,7 @@
 
 ### C2. P1：把“中局节奏”补出来
 - [x] Battle Lab
-- [~] 更多载具与反制链（已补 V3 Artillery + APC 装载/卸载 + 基础运输协同 AI + IFV + Flak Track + Prism Tank 攻坚单位 + Harrier 回场补弹 + Transport Helicopter 空中投送 + Kirov Airship 重轰炸飞艇，仍缺更复杂的运输战术与更完整的空地反制反馈）
+- [~] 更多载具与反制链（已补 V3 Artillery + APC 装载/卸载 + 基础运输协同 AI + IFV + Flak Track + Prism Tank 攻坚单位 + Harrier 回场补弹 + Transport Helicopter 空中投送 + Kirov Airship 重轰炸飞艇；Transport Helicopter 现已支持 AI 远程步兵空投突击，仍缺更复杂的多机运输战术与更完整的空地反制反馈）
 - [x] veterancy
 - [x] air units（已补 Airfield + Harrier 基础空袭链路）
 - [x] more maps

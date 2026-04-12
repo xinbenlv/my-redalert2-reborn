@@ -4754,14 +4754,14 @@ class GameState {
     }
 
     assignAITransportAssault(aiPlayer, enemyPlayer, idleCombatUnits) {
-        const apcs = aiPlayer.units.filter(unit =>
-            unit.type === 'apc' &&
-            unit.state !== 'dead' &&
+        const transports = aiPlayer.units.filter(unit =>
+            this.isTransportUnit(unit) &&
+            (unit.type === 'apc' || unit.type === 'transportHeli') &&
             unit.state !== 'loading' &&
             unit.state !== 'unloadingPassengers' &&
             !unit.attackTarget
         );
-        if (!apcs.length) return [];
+        if (!transports.length) return [];
 
         const target = this.getAIPriorityTarget(aiPlayer, enemyPlayer);
         const targetAnchor = this.getEntityAnchor(target);
@@ -4774,36 +4774,37 @@ class GameState {
             TRANSPORTABLE_INFANTRY_TYPES.has(unit.type)
         );
 
-        for (const apc of apcs) {
-            const distanceToTarget = Math.hypot(apc.x - targetAnchor.x, apc.y - targetAnchor.y);
-            if (distanceToTarget < 8) continue;
+        for (const transport of transports) {
+            const distanceToTarget = Math.hypot(transport.x - targetAnchor.x, transport.y - targetAnchor.y);
+            const minAssaultDistance = transport.type === 'transportHeli' ? 12 : 8;
+            if (distanceToTarget < minAssaultDistance) continue;
 
-            const pendingBoarders = aiPlayer.units.filter(unit => unit.transportTarget === apc && unit.state !== 'loaded');
-            const minDropForce = Math.min(2, apc.passengerCapacity || 0);
-            if (apc.passengers.length >= minDropForce || (apc.passengers.length > 0 && pendingBoarders.length === 0)) {
-                apc.aiTransportAttackTarget = target;
-                if (this.orderTransportUnload(apc, targetAnchor.x, targetAnchor.y)) {
-                    assignments.push(apc, ...apc.passengers);
+            const pendingBoarders = aiPlayer.units.filter(unit => unit.transportTarget === transport && unit.state !== 'loaded');
+            const minDropForce = Math.min(transport.type === 'transportHeli' ? 3 : 2, transport.passengerCapacity || 0);
+            if (transport.passengers.length >= minDropForce || (transport.passengers.length > 0 && pendingBoarders.length === 0)) {
+                transport.aiTransportAttackTarget = target;
+                if (this.orderTransportUnload(transport, targetAnchor.x, targetAnchor.y)) {
+                    assignments.push(transport, ...transport.passengers);
                 }
                 continue;
             }
 
-            const freeSlots = Math.max(0, apc.passengerCapacity - apc.passengers.length - pendingBoarders.length);
+            const freeSlots = Math.max(0, transport.passengerCapacity - transport.passengers.length - pendingBoarders.length);
             if (freeSlots <= 0 || availableInfantry.length === 0) continue;
 
             const boarders = [...availableInfantry]
-                .sort((a, b) => Math.hypot(a.x - apc.x, a.y - apc.y) - Math.hypot(b.x - apc.x, b.y - apc.y))
+                .sort((a, b) => Math.hypot(a.x - transport.x, a.y - transport.y) - Math.hypot(b.x - transport.x, b.y - transport.y))
                 .slice(0, freeSlots);
             let issuedBoarding = false;
             for (const infantry of boarders) {
-                if (!this.orderPassengerToBoard(infantry, apc)) continue;
+                if (!this.orderPassengerToBoard(infantry, transport)) continue;
                 const index = availableInfantry.indexOf(infantry);
                 if (index >= 0) availableInfantry.splice(index, 1);
                 assignments.push(infantry);
                 issuedBoarding = true;
             }
             if (issuedBoarding) {
-                assignments.push(apc);
+                assignments.push(transport);
             }
         }
 
@@ -5018,11 +5019,27 @@ class GameState {
         }
 
         const aiHarrierCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'harrier').length + this._getTotalTrainQueue(ai, 'harrier');
+        const aiTransportHeliCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'transportHeli').length + this._getTotalTrainQueue(ai, 'transportHeli');
         const aiKirovCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'kirov').length + this._getTotalTrainQueue(ai, 'kirov');
         const enemyEcoTargets = enemyPlayer.units.filter(u => u.state !== 'dead' && u.type === 'harvester').length + enemyPlayer.buildings.filter(b => b.built && b.hp > 0 && (b.type === 'refinery' || b.type === 'powerPlant')).length;
+        const transportableInfantryCount = ai.units.filter(u => u.state !== 'dead' && TRANSPORTABLE_INFANTRY_TYPES.has(u.type)).length;
+        const targetForTransport = this.getAIPriorityTarget(ai, enemyPlayer);
+        const transportTargetAnchor = this.getEntityAnchor(targetForTransport);
+        const baseAnchor = this.getPlayerBaseAnchor(ai);
+        const transportDistance = transportTargetAnchor && baseAnchor
+            ? Math.hypot(transportTargetAnchor.x - baseAnchor.x, transportTargetAnchor.y - baseAnchor.y)
+            : 0;
+        const wantsAirliftPressure = this.aiConfig.buildOrder === 'air' && airfields.length > 0 && transportableInfantryCount >= 3 && transportDistance >= 14;
         const desiredHarrierCount = Math.max(0, this.aiConfig.desiredHarriers + this.aiConfig.desiredHarriersBonus);
         const wantsKirovSiege = this.aiConfig.buildOrder === 'air' || this.aiConfig.buildOrder === 'fortified';
         const desiredKirovCount = enemyBuildings >= 9 || enemyDefenses >= 3 ? 2 : 1;
+        if (!antiAirEmergency && wantsAirliftPressure && ai.money >= UNIT_TYPES.transportHeli.cost && aiTransportHeliCount < 1) {
+            const airfield = airfields.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
+            ai.money -= UNIT_TYPES.transportHeli.cost;
+            if (!airfield.training) airfield.training = 'transportHeli';
+            else airfield.trainQueue.push('transportHeli');
+            return;
+        }
         if (!antiAirEmergency && builtTypes.has('battleLab') && airfields.length > 0 && ai.money >= UNIT_TYPES.kirov.cost && wantsKirovSiege && (enemyDefenses >= 2 || enemyBuildings >= 7) && aiKirovCount < desiredKirovCount) {
             const airfield = airfields.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
             ai.money -= UNIT_TYPES.kirov.cost;
