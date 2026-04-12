@@ -1352,11 +1352,17 @@ class GameState {
             this.setBuildingOwner(building, building.neutralOwner);
         }
         const count = occupants.length;
-        if (!count) {
+        const combatOccupants = occupants.filter(unit => {
+            const damage = unit.damage ?? unit.baseDamage ?? 0;
+            const fireRate = unit.fireRate ?? unit.baseFireRate ?? 0;
+            return damage > 0 && fireRate > 0 && ((unit.canAttackGround !== false) || unit.canAttackAir);
+        });
+        if (!count || !combatOccupants.length) {
             building.damage = 0;
             building.range = 0;
             building.fireRate = 0;
             building.damageProfile = null;
+            building.targetArmorClasses = null;
             building.canAttackGround = false;
             building.canAttackAir = false;
             building.attackTarget = null;
@@ -1364,16 +1370,17 @@ class GameState {
             building.weaponType = 'rifle';
             return;
         }
-        const avgDamage = occupants.reduce((sum, unit) => sum + (unit.damage || unit.baseDamage || 0), 0) / count;
-        const bestRange = occupants.reduce((best, unit) => Math.max(best, unit.range || 0), 0);
-        building.damage = Math.max(8, Math.round(avgDamage * Math.min(1.75, 1 + count * 0.18)));
+        const avgDamage = combatOccupants.reduce((sum, unit) => sum + (unit.damage ?? unit.baseDamage ?? 0), 0) / combatOccupants.length;
+        const bestRange = combatOccupants.reduce((best, unit) => Math.max(best, unit.range ?? unit.baseRange ?? 0), 0);
+        building.damage = Math.max(8, Math.round(avgDamage * Math.min(1.75, 1 + combatOccupants.length * 0.18)));
         building.range = Math.max(4.5, bestRange + 0.6);
-        building.fireRate = Math.max(280, 700 - count * 110);
-        building.damageProfile = null;
-        building.canAttackGround = occupants.some(unit => unit.canAttackGround !== false);
-        building.canAttackAir = occupants.some(unit => unit.canAttackAir);
+        building.fireRate = Math.max(280, 700 - combatOccupants.length * 110);
+        building.damageProfile = this.getCombinedDamageProfile(combatOccupants);
+        building.targetArmorClasses = this.getCombinedTargetArmorClasses(combatOccupants);
+        building.canAttackGround = combatOccupants.some(unit => unit.canAttackGround !== false);
+        building.canAttackAir = combatOccupants.some(unit => unit.canAttackAir);
         building.projectileSpeed = 11;
-        building.weaponType = occupants.some(unit => unit.canAttackAir) ? 'flak' : 'rifle';
+        building.weaponType = combatOccupants.some(unit => unit.canAttackAir) ? 'flak' : 'rifle';
     }
 
     setBuildingOwner(building, newOwner) {
@@ -1397,9 +1404,50 @@ class GameState {
         return target.armorType || 'light';
     }
 
+    getEntityDamageMultiplierForArmorClass(entity, armorClass) {
+        if (!entity) return 0;
+        if (armorClass === 'air') {
+            if (!entity.canAttackAir) return 0;
+        } else if (entity.canAttackGround === false) {
+            return 0;
+        }
+        if (Array.isArray(entity.targetArmorClasses) && !entity.targetArmorClasses.includes(armorClass)) {
+            return 0;
+        }
+        const explicit = entity.damageProfile?.[armorClass];
+        return explicit ?? 1;
+    }
+
+    getCombinedTargetArmorClasses(entities) {
+        const allowed = new Set();
+        for (const armorClass of ['infantry', 'light', 'heavy', 'building', 'air']) {
+            if (entities.some(entity => this.getEntityDamageMultiplierForArmorClass(entity, armorClass) > 0)) {
+                allowed.add(armorClass);
+            }
+        }
+        return allowed.size ? [...allowed] : null;
+    }
+
+    getCombinedDamageProfile(entities) {
+        if (!entities?.length) return null;
+        const totalWeight = entities.reduce((sum, entity) => sum + Math.max(1, entity.damage ?? entity.baseDamage ?? 0), 0);
+        if (totalWeight <= 0) return null;
+        const profile = {};
+        for (const armorClass of ['infantry', 'light', 'heavy', 'building', 'air']) {
+            let weightedMultiplier = 0;
+            for (const entity of entities) {
+                const weight = Math.max(1, entity.damage ?? entity.baseDamage ?? 0);
+                weightedMultiplier += weight * this.getEntityDamageMultiplierForArmorClass(entity, armorClass);
+            }
+            profile[armorClass] = Math.round((weightedMultiplier / totalWeight) * 100) / 100;
+        }
+        return profile;
+    }
+
     getDamageAgainstTarget(baseDamage, damageProfile, target) {
         const armorClass = this.getTargetArmorClass(target);
         const multiplier = damageProfile?.[armorClass] ?? 1;
+        if (baseDamage <= 0 || multiplier <= 0) return 0;
         return Math.max(1, Math.round(baseDamage * multiplier));
     }
 
