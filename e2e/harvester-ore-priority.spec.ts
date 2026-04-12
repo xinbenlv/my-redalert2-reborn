@@ -121,3 +121,91 @@ test('harvester prefers a richer ore field over a nearly depleted closer patch',
   ]).toContain(`${(target.oreTarget as any).x},${(target.oreTarget as any).y}`);
   expect((target.oreTarget as any).localFieldValue).toBeGreaterThan(20000);
 });
+
+
+test('harvester prefers gem fields over equally close ore because they pay more per trip', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForFunction(() => Boolean((window as any).game));
+  await resetEconomySandbox(page);
+
+  const target = await page.evaluate(() => {
+    const game = (window as any).game;
+    const ai = game.players[1];
+
+    const refinery = game.createBuilding('refinery', 6, 6, 1);
+    ai.buildings.push(refinery);
+
+    const harvester = game.createUnit('harvester', 10, 10, 1);
+    ai.units.push(harvester);
+
+    const oreTile = game.map[10][12];
+    oreTile.type = 'ore';
+    oreTile.oreAmount = 5000;
+    oreTile.maxOreAmount = 5000;
+
+    const gemTile = game.map[12][10];
+    gemTile.type = 'gems';
+    gemTile.oreAmount = 3200;
+    gemTile.maxOreAmount = 3200;
+
+    game.assignHarvesterJob(harvester, ai);
+    return {
+      oreTarget: harvester.oreTarget ? {
+        x: harvester.oreTarget.x,
+        y: harvester.oreTarget.y,
+        resourceType: harvester.oreTarget.resourceType,
+        resourceValueMultiplier: harvester.oreTarget.resourceValueMultiplier,
+      } : null,
+    };
+  });
+
+  expect(target.oreTarget).toEqual(expect.objectContaining({ x: 10, y: 12, resourceType: 'gems', resourceValueMultiplier: 2 }));
+});
+
+test('harvester converts gems into extra credits while respecting cargo capacity', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForFunction(() => Boolean((window as any).game));
+  await resetEconomySandbox(page);
+
+  const result = await page.evaluate(() => {
+    const game = (window as any).game;
+    const ai = game.players[1];
+
+    const refinery = game.createBuilding('refinery', 6, 6, 1);
+    ai.buildings.push(refinery);
+
+    const harvester = game.createUnit('harvester', 8, 8, 1);
+    ai.units.push(harvester);
+
+    const gemTile = game.map[8][8];
+    gemTile.type = 'gems';
+    gemTile.oreAmount = 1000;
+    gemTile.maxOreAmount = 1000;
+
+    game.assignHarvesterJob(harvester, ai);
+    for (let i = 0; i < 25; i += 1) {
+      game.updateHarvesterUnit(harvester, ai, harvester.harvestInterval);
+      if (harvester.cargo >= harvester.cargoCapacity) break;
+    }
+    const cargoAfterMining = harvester.cargo;
+    const gemRemaining = gemTile.oreAmount;
+
+    harvester.x = refinery.tx + refinery.size / 2 - 0.5;
+    harvester.y = refinery.ty + refinery.size / 2 - 0.5;
+    harvester.state = 'unloading';
+    harvester.returnRefinery = refinery;
+    for (let i = 0; i < 10; i += 1) game.updateHarvesterUnit(harvester, ai, harvester.unloadInterval);
+
+    return {
+      cargoAfterMining,
+      gemRemaining,
+      moneyAfterUnload: ai.money,
+      cargoAfterUnload: harvester.cargo,
+    };
+  });
+
+  expect(result.cargoAfterMining).toBe(700);
+  expect(result.gemRemaining).toBe(650);
+  expect(result.moneyAfterUnload).toBe(700);
+  expect(result.cargoAfterUnload).toBe(0);
+});

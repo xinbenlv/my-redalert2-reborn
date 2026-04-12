@@ -751,7 +751,21 @@ class GameState {
                 { x: MAP_SIZE / 2 + 8, y: MAP_SIZE / 2 - 4, r: 2.4 },
             ],
         };
+        const gemFieldsByMap = {
+            classic: [
+                { x: MAP_SIZE / 2 - 3, y: MAP_SIZE / 2 - 3, r: 1.6 },
+            ],
+            crossroads: [
+                { x: MAP_SIZE / 2, y: MAP_SIZE / 2, r: 1.7 },
+            ],
+            'twin-rivers': [
+                { x: MAP_SIZE / 2, y: MAP_SIZE / 2, r: 1.9 },
+                { x: MAP_SIZE / 2 - 8, y: MAP_SIZE / 2 + 4, r: 1.2 },
+                { x: MAP_SIZE / 2 + 8, y: MAP_SIZE / 2 - 4, r: 1.2 },
+            ],
+        };
         const oreFields = oreFieldsByMap[mapId] || oreFieldsByMap.classic;
+        const gemFields = gemFieldsByMap[mapId] || gemFieldsByMap.classic;
 
         for (let y = 0; y < MAP_SIZE; y++) {
             this.map[y] = [];
@@ -785,12 +799,16 @@ class GameState {
                 if (type === 'grass' && oreFields.some(field => Math.hypot(x - field.x, y - field.y) < field.r)) {
                     type = 'ore';
                 }
+                if (type !== 'water' && gemFields.some(field => Math.hypot(x - field.x, y - field.y) < field.r)) {
+                    type = 'gems';
+                }
 
+                const resourceAmount = type === 'ore' ? 5000 : type === 'gems' ? 3200 : 0;
                 this.map[y][x] = {
                     type,
                     variant: (x * 7 + y * 13) % 5,
-                    oreAmount: type === 'ore' ? 5000 : 0,
-                    maxOreAmount: type === 'ore' ? 5000 : 0
+                    oreAmount: resourceAmount,
+                    maxOreAmount: resourceAmount
                 };
                 this.fog[y][x] = 0;
             }
@@ -2993,14 +3011,22 @@ class GameState {
         return best;
     }
 
+    isHarvestableResourceTile(tile) {
+        return !!tile && (tile.type === 'ore' || tile.type === 'gems') && tile.oreAmount > 0;
+    }
+
+    getResourceValueMultiplier(tile) {
+        return tile?.type === 'gems' ? 2 : 1;
+    }
+
     getLocalOreFieldValue(x, y, radius = 2) {
         let total = 0;
         for (let oy = Math.max(0, y - radius); oy <= Math.min(MAP_SIZE - 1, y + radius); oy++) {
             for (let ox = Math.max(0, x - radius); ox <= Math.min(MAP_SIZE - 1, x + radius); ox++) {
                 if (Math.hypot(ox - x, oy - y) > radius + 0.25) continue;
                 const tile = this.map[oy][ox];
-                if (tile.type !== 'ore' || tile.oreAmount <= 0) continue;
-                total += tile.oreAmount;
+                if (!this.isHarvestableResourceTile(tile)) continue;
+                total += tile.oreAmount * this.getResourceValueMultiplier(tile);
             }
         }
         return total;
@@ -3038,12 +3064,13 @@ class GameState {
         for (let y = 0; y < MAP_SIZE; y++) {
             for (let x = 0; x < MAP_SIZE; x++) {
                 const tile = this.map[y][x];
-                if (tile.type !== 'ore' || tile.oreAmount <= 0) continue;
+                if (!this.isHarvestableResourceTile(tile)) continue;
                 const unitDist = Math.hypot(unit.x - x, unit.y - y);
                 const refineryDist = refineryAnchor ? Math.hypot(refineryAnchor.x - x, refineryAnchor.y - y) : unitDist;
                 const threatDist = this.getNearestEnemyThreatDistance(unit, x, y);
                 const localFieldValue = this.getLocalOreFieldValue(x, y, 2);
                 const richness = tile.maxOreAmount > 0 ? tile.oreAmount / tile.maxOreAmount : 0;
+                const resourceValueMultiplier = this.getResourceValueMultiplier(tile);
                 const localFieldScore = Math.min(localFieldValue / 5000, 8);
                 const threatPenalty = Number.isFinite(threatDist) ? Math.max(0, 7 - threatDist) * 8 : 0;
                 const depletedPenalty = tile.oreAmount <= unit.harvestRate * 2 ? 6 : 0;
@@ -3052,11 +3079,12 @@ class GameState {
                     + threatPenalty
                     + depletedPenalty
                     - richness * 2.5
-                    - localFieldScore * 1.6;
+                    - localFieldScore * 1.6
+                    - (resourceValueMultiplier - 1) * 4.5;
                 if (score < bestScore - 0.001 || (Math.abs(score - bestScore) <= 0.001 && unitDist < bestDist)) {
                     bestScore = score;
                     bestDist = unitDist;
-                    best = { x, y, tile, score, threatDist, localFieldValue };
+                    best = { x, y, tile, score, threatDist, localFieldValue, resourceType: tile.type, resourceValueMultiplier };
                 }
             }
         }
@@ -3191,7 +3219,7 @@ class GameState {
             if (!finished) return;
         }
 
-        if (unit.cargo >= unit.cargoCapacity) {
+        if (unit.cargo >= unit.cargoCapacity || (unit.cargo > 0 && unit.state === 'unloading' && unit.returnRefinery)) {
             const refinery = unit.returnRefinery || this.findNearestRefinery(player, unit);
             if (!refinery) return;
             const tx = refinery.tx + refinery.size / 2 - 0.5;
@@ -3219,7 +3247,9 @@ class GameState {
             return;
         }
 
-        const ore = unit.oreTarget && unit.oreTarget.tile?.oreAmount > 0 ? unit.oreTarget : this.findNearestOreTile(unit, player, { refinery: unit.returnRefinery || this.findNearestRefinery(player, unit) });
+        const ore = unit.oreTarget && this.isHarvestableResourceTile(unit.oreTarget.tile)
+            ? unit.oreTarget
+            : this.findNearestOreTile(unit, player, { refinery: unit.returnRefinery || this.findNearestRefinery(player, unit) });
         if (!ore) {
             unit.state = 'idle';
             return;
@@ -3235,11 +3265,18 @@ class GameState {
         unit.harvestTimer += dt;
         if (unit.harvestTimer >= unit.harvestInterval) {
             unit.harvestTimer = 0;
-            const mined = Math.min(unit.harvestRate, ore.tile.oreAmount, unit.cargoCapacity - unit.cargo);
-            ore.tile.oreAmount -= mined;
-            unit.cargo += mined;
+            const resourceMultiplier = this.getResourceValueMultiplier(ore.tile);
+            const freeCargoValue = Math.max(0, unit.cargoCapacity - unit.cargo);
+            const minedUnits = Math.min(unit.harvestRate, ore.tile.oreAmount, freeCargoValue / resourceMultiplier);
+            const minedValue = minedUnits * resourceMultiplier;
+            ore.tile.oreAmount -= minedUnits;
+            unit.cargo += minedValue;
             if (ore.tile.oreAmount <= 0 || unit.cargo >= unit.cargoCapacity) {
-                if (ore.tile.oreAmount <= 0) ore.tile.type = 'grass';
+                if (ore.tile.oreAmount <= 0) {
+                    ore.tile.oreAmount = 0;
+                    ore.tile.maxOreAmount = 0;
+                    ore.tile.type = 'grass';
+                }
                 this.assignHarvesterJob(unit, player);
             }
         }
@@ -4965,6 +5002,8 @@ class GameState {
         }
         this.renderer3d.cleanupDeadUnits(this.players);
 
+        this.renderer3d.syncResourceTiles(this.map);
+
         // Sync projectiles
         const activeProjectiles = new Set(this.projectiles);
         for (const p of this.projectiles) {
@@ -5167,6 +5206,7 @@ class GameState {
 
                 if (tile.type === 'water') mctx.fillStyle = fog === 2 ? '#1a5276' : '#0d2940';
                 else if (tile.type === 'ore') mctx.fillStyle = fog === 2 ? '#aa8800' : '#554400';
+                else if (tile.type === 'gems') mctx.fillStyle = fog === 2 ? '#34d1c6' : '#185c57';
                 else mctx.fillStyle = fog === 2 ? '#3d6b35' : '#1e3519';
 
                 mctx.fillRect(x * scale, y * scale, scale + 0.5, scale + 0.5);
@@ -5457,7 +5497,7 @@ class GameState {
             if (s.tx === undefined) {
                 const extras = [];
                 const veterancyBits = [];
-                if (s.role === 'harvester') extras.push(`ORE: ${Math.floor(s.cargo)}/${s.cargoCapacity}`);
+                if (s.role === 'harvester') extras.push(`CARGO: ${Math.floor(s.cargo)}/${s.cargoCapacity}`);
                 else if (this.isTransportUnit(s)) {
                     extras.push(`CARGO: ${s.passengers.length}/${s.passengerCapacity}`);
                     if (s.passengers.length) {

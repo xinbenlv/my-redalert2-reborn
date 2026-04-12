@@ -112,12 +112,14 @@ class Renderer3D {
                 this.scene.add(mesh);
                 this.tileMeshes.push({ mesh, x, y, tile });
 
-                // Add ore crystals
-                if (tile.type === 'ore') {
-                    const crystal = this.models.createOreCrystal();
+                // Add ore/gem crystals
+                if (tile.type === 'ore' || tile.type === 'gems') {
+                    const crystal = this.models.createOreCrystal(tile.type);
                     crystal.position.set(x * this.tileSize, 0, y * this.tileSize);
                     this.scene.add(crystal);
-                    this.oreCrystals.push(crystal);
+                    this.oreCrystals.push({ mesh: crystal, x, y, tile });
+                } else {
+                    this.oreCrystals.push(null);
                 }
             }
         }
@@ -142,6 +144,8 @@ class Renderer3D {
             this.waterTiles.push({ geo, x, y });
         } else if (tile.type === 'ore') {
             color = new THREE.Color(0.35 + rng * 0.1, 0.28 + rng * 0.08, 0.12);
+        } else if (tile.type === 'gems') {
+            color = new THREE.Color(0.08 + rng * 0.04, 0.26 + rng * 0.08, 0.26 + rng * 0.12);
         }
 
         const mat = new THREE.MeshStandardMaterial({
@@ -213,6 +217,34 @@ class Renderer3D {
                 positions[i * 3 + 1] = Math.sin(time * 2 + px * 3 + pz * 3 + wt.x + wt.y) * 0.02;
             }
             tileMesh.mesh.geometry.attributes.position.needsUpdate = true;
+        }
+    }
+
+    syncResourceTiles(map) {
+        for (let i = 0; i < this.tileMeshes.length; i++) {
+            const tileEntry = this.tileMeshes[i];
+            const crystalEntry = this.oreCrystals[i];
+            if (!tileEntry) continue;
+            const tile = map[tileEntry.y]?.[tileEntry.x];
+            if (!tile) continue;
+            if (tileEntry.mesh.userData.tileType !== tile.type) {
+                const nextMesh = this._createTileMesh(tile, tileEntry.x, tileEntry.y);
+                nextMesh.position.copy(tileEntry.mesh.position);
+                nextMesh.receiveShadow = true;
+                this.scene.remove(tileEntry.mesh);
+                this.scene.add(nextMesh);
+                tileEntry.mesh = nextMesh;
+            }
+            if (crystalEntry?.mesh) {
+                crystalEntry.mesh.visible = tile.type === 'ore' || tile.type === 'gems';
+                if (crystalEntry.mesh.visible && crystalEntry.mesh.userData.resourceType !== tile.type) {
+                    this.scene.remove(crystalEntry.mesh);
+                    const replacement = this.models.createOreCrystal(tile.type);
+                    replacement.position.copy(crystalEntry.mesh.position);
+                    this.scene.add(replacement);
+                    crystalEntry.mesh = replacement;
+                }
+            }
         }
     }
 

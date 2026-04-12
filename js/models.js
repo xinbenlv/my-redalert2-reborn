@@ -2005,13 +2005,14 @@ class ModelFactory {
 
     // ==================== ORE CRYSTALS ====================
 
-    createOreCrystal() {
+    createOreCrystal(resourceType = 'ore') {
         const group = new THREE.Group();
-        const crystalMat = this._mat(0xddaa00, {
+        const isGems = resourceType === 'gems';
+        const crystalMat = this._mat(isGems ? 0x33d6c8 : 0xddaa00, {
             roughness: 0.3,
             metalness: 0.6,
-            emissive: 0xaa7700,
-            emissiveIntensity: 0.15
+            emissive: isGems ? 0x1b8f88 : 0xaa7700,
+            emissiveIntensity: isGems ? 0.22 : 0.15
         });
 
         const count = 3 + Math.floor(Math.random() * 3);
@@ -2033,6 +2034,7 @@ class ModelFactory {
         }
 
         group.userData.modelType = 'ore';
+        group.userData.resourceType = resourceType;
         return group;
     }
 
