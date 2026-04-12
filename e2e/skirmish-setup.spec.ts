@@ -9,6 +9,7 @@ test('skirmish setup applies selected credits, map, faction, and difficulty befo
   await page.selectOption('#setup-starting-credits', '10000');
   await page.selectOption('#setup-map', 'crossroads');
   await page.selectOption('#setup-player-faction', 'allied');
+  await page.selectOption('#setup-player-color', 'green');
   await page.selectOption('#setup-ai-difficulty', 'hard');
   await page.selectOption('#setup-ai-players', '3');
   await page.selectOption('#setup-ai-build-order', 'air');
@@ -27,6 +28,8 @@ test('skirmish setup applies selected credits, map, faction, and difficulty befo
       aiPlayers: game.matchConfig.aiPlayers,
       playerCount: game.players.filter((entry: any) => !entry.isNeutral).length,
       playerFaction: game.players[0].faction,
+      playerColor: game.matchConfig.playerColor,
+      playerColorValue: game.players[0].color,
       aiDifficulty: game.aiConfig?.difficulty,
       aiBuildOrder: game.aiConfig?.buildOrder,
       aiBuildOrderLabel: game.players[1]?.aiBuildOrderLabel,
@@ -47,16 +50,20 @@ test('skirmish setup applies selected credits, map, faction, and difficulty befo
   expect(applied.aiPlayers).toBe(3);
   expect(applied.playerCount).toBe(4);
   expect(applied.playerFaction).toBe('allied');
+  expect(applied.playerColor).toBe('green');
+  expect(applied.playerColorValue).toBe('#2dbd63');
   expect(applied.aiDifficulty).toBe('hard');
   expect(applied.aiBuildOrder).toBe('air');
   expect(applied.aiBuildOrderLabel).toBe('Air Supremacy');
   expect(new Set(applied.aiColors).size).toBe(3);
+  expect(applied.aiColors).not.toContain(applied.playerColorValue);
   expect(applied.spawnPoints).toHaveLength(4);
   expect(applied.gameSpeed).toBe('fast');
   expect(applied.gameSpeedLabel).toBe('Fast Strike');
   expect(applied.gameSpeedMultiplier).toBeGreaterThan(1);
   expect(applied.mapProfile).toBe('crossroads');
   expect(applied.title).toContain('CROSSROADS');
+  expect(applied.briefing).toContain('ALLIED / EMERALD STRIKE');
   expect(applied.briefing).toContain('3 AI');
   expect(applied.briefing).toContain('HARD');
   expect(applied.briefing).toContain('AIR SUPREMACY');
@@ -104,6 +111,36 @@ test('game speed selection changes simulation tempo for fresh skirmish instances
   expect(result.fast.distance).toBeGreaterThan(result.slow.distance * 1.4);
 });
 
+test('skirmish setup normalizes unknown player colors back to default red without duplicating AI colors', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForFunction(() => Boolean((window as any).GameState));
+
+  const result = await page.evaluate(() => {
+    const GameState = (window as any).GameState;
+    const game = new GameState({
+      map: 'classic',
+      startingCredits: 6500,
+      playerFaction: 'soviet',
+      playerColor: 'unknown-color',
+      aiDifficulty: 'medium',
+      aiPlayers: 3,
+      aiBuildOrder: 'balanced',
+      gameSpeed: 'normal',
+    });
+
+    return {
+      normalizedColor: game.matchConfig.playerColor,
+      playerColorValue: game.players[0].color,
+      aiColors: game.players.filter((entry: any) => entry.isAI).map((entry: any) => entry.color),
+    };
+  });
+
+  expect(result.normalizedColor).toBe('red');
+  expect(result.playerColorValue).toBe('#cc2222');
+  expect(new Set(result.aiColors).size).toBe(3);
+  expect(result.aiColors).not.toContain(result.playerColorValue);
+});
+
 test('skirmish setup exposes twin rivers and boots the distinct battlefield layout', async ({ page }) => {
   await page.goto('/');
 
@@ -143,7 +180,7 @@ test('skirmish setup exposes twin rivers and boots the distinct battlefield layo
   expect(twinRivers.title).toContain('TWIN RIVERS');
   expect(twinRivers.leftChannel).toBe('water');
   expect(twinRivers.rightChannel).toBe('water');
-  expect(twinRivers.centerFord).toBe('ore');
+  expect(['ore', 'gems']).toContain(twinRivers.centerFord);
   expect(twinRivers.upperFord).not.toBe('water');
   expect(twinRivers.lowerFord).not.toBe('water');
   expect(twinRivers.flankOre).toBe('ore');

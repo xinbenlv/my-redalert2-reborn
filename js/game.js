@@ -17,7 +17,14 @@ const HARVESTER_RETREAT_RECENT_HIT_MS = 3200;
 const HARVESTER_RETREAT_HEALTH_RATIO = 0.55;
 const HARVESTER_RETREAT_THREAT_RADIUS = 6.5;
 const HARVESTER_RETREAT_SAFE_HOLD_MS = 1800;
-const PLAYER_COLORS = ['#cc2222', '#3f7cff', '#2dbd63', '#f2c14e'];
+const PLAYER_COLOR_PRESETS = [
+    { id: 'red', label: 'Soviet Red', value: '#cc2222' },
+    { id: 'blue', label: 'Allied Blue', value: '#3f7cff' },
+    { id: 'green', label: 'Emerald Strike', value: '#2dbd63' },
+    { id: 'gold', label: 'Desert Gold', value: '#f2c14e' },
+    { id: 'purple', label: 'Psionic Purple', value: '#b067ff' },
+];
+const PLAYER_COLORS = PLAYER_COLOR_PRESETS.map(preset => preset.value);
 const MAP_PROFILES = {
     classic: {
         id: 'classic',
@@ -60,6 +67,7 @@ const DEFAULT_MATCH_CONFIG = {
     startingCredits: 6500,
     map: 'classic',
     playerFaction: 'soviet',
+    playerColor: 'red',
     aiDifficulty: 'medium',
     aiPlayers: 1,
     aiBuildOrder: 'balanced',
@@ -142,6 +150,7 @@ function normalizeMatchConfig(config = {}) {
     const startingCredits = Number(config.startingCredits);
     const map = MAP_PROFILES[config.map] ? config.map : DEFAULT_MATCH_CONFIG.map;
     const playerFaction = config.playerFaction === 'allied' ? 'allied' : 'soviet';
+    const playerColor = getPlayerColorId(config.playerColor);
     const aiDifficulty = ['easy', 'medium', 'hard'].includes(config.aiDifficulty) ? config.aiDifficulty : DEFAULT_MATCH_CONFIG.aiDifficulty;
     const aiPlayers = Math.max(1, Math.min(3, Number(config.aiPlayers) || DEFAULT_MATCH_CONFIG.aiPlayers));
     const aiBuildOrder = AI_BUILD_ORDER_PROFILES[config.aiBuildOrder] ? config.aiBuildOrder : DEFAULT_MATCH_CONFIG.aiBuildOrder;
@@ -150,6 +159,7 @@ function normalizeMatchConfig(config = {}) {
         startingCredits: [5000, 6500, 10000].includes(startingCredits) ? startingCredits : DEFAULT_MATCH_CONFIG.startingCredits,
         map,
         playerFaction,
+        playerColor,
         aiDifficulty,
         aiPlayers,
         aiBuildOrder,
@@ -169,21 +179,41 @@ function persistMatchConfig(config) {
     localStorage.setItem(MATCH_CONFIG_STORAGE_KEY, JSON.stringify(normalizeMatchConfig(config)));
 }
 
-function getPlayerFactionProfile(faction, color = null) {
+function getPlayerColorPreset(colorId = DEFAULT_MATCH_CONFIG.playerColor) {
+    return PLAYER_COLOR_PRESETS.find(preset => preset.id === colorId) || PLAYER_COLOR_PRESETS[0];
+}
+
+function getPlayerColorId(colorId) {
+    return getPlayerColorPreset(colorId).id;
+}
+
+function getPlayerColorValue(colorId) {
+    return getPlayerColorPreset(colorId).value;
+}
+
+function getPlayerFactionProfile(faction, colorId = null) {
     return {
         faction: faction === 'allied' ? 'allied' : 'soviet',
-        color: color || (faction === 'allied' ? '#3f7cff' : '#cc2222'),
+        color: getPlayerColorValue(colorId || (faction === 'allied' ? 'blue' : 'red')),
     };
 }
 
-function getAIFactionProfile(playerFaction, aiIndex = 0) {
+function getAvailableAIColors(playerColorId) {
+    const playerColor = getPlayerColorValue(playerColorId);
+    return PLAYER_COLORS.filter(color => color !== playerColor);
+}
+
+function getAIFactionProfile(playerFaction, playerColorId, aiIndex = 0) {
     const aiFaction = playerFaction === 'allied' ? 'soviet' : 'allied';
-    const fallbackColors = playerFaction === 'allied'
-        ? ['#cc2222', '#2dbd63', '#f2c14e']
-        : ['#3f7cff', '#2dbd63', '#f2c14e'];
+    const preferredLeadColor = playerFaction === 'allied' ? '#cc2222' : '#3f7cff';
+    const availableColors = getAvailableAIColors(playerColorId);
+    const fallbackColors = [
+        preferredLeadColor,
+        ...availableColors.filter(color => color !== preferredLeadColor),
+    ].filter((color, index, array) => array.indexOf(color) === index);
     return {
         faction: aiFaction,
-        color: fallbackColors[aiIndex] || PLAYER_COLORS[(aiIndex + 1) % PLAYER_COLORS.length],
+        color: fallbackColors[aiIndex] || availableColors[aiIndex % availableColors.length] || preferredLeadColor,
     };
 }
 
@@ -288,7 +318,8 @@ function updateSetupBriefing(config) {
     const mapProfile = MAP_PROFILES[normalized.map];
     const aiPlan = getAIBuildOrderProfile(normalized.aiBuildOrder);
     const speedLabel = getGameSpeedLabel(normalized.gameSpeed).toUpperCase();
-    briefingEl.textContent = `${mapProfile.name.toUpperCase()} • ${normalized.aiPlayers} AI • ${normalized.aiDifficulty.toUpperCase()} • ${aiPlan.label.toUpperCase()} • ${speedLabel} • $${normalized.startingCredits}`;
+    const colorLabel = getPlayerColorPreset(normalized.playerColor).label.toUpperCase();
+    briefingEl.textContent = `${mapProfile.name.toUpperCase()} • ${normalized.playerFaction.toUpperCase()} / ${colorLabel} • ${normalized.aiPlayers} AI • ${normalized.aiDifficulty.toUpperCase()} • ${aiPlan.label.toUpperCase()} • ${speedLabel} • $${normalized.startingCredits}`;
 }
 
 // ==================== GAME STATE ====================
@@ -335,12 +366,12 @@ class GameState {
         this.generateMap();
 
         // Players: Human vs AI coalition
-        const playerFaction = getPlayerFactionProfile(this.matchConfig.playerFaction, PLAYER_COLORS[0]);
+        const playerFaction = getPlayerFactionProfile(this.matchConfig.playerFaction, this.matchConfig.playerColor);
         this.players = [
             { faction: playerFaction.faction, money: this.matchConfig.startingCredits, buildings: [], units: [], color: playerFaction.color, isAI: false, lowPowerNotified: false, startingBaseGranted: false }
         ];
         for (let aiIndex = 0; aiIndex < this.matchConfig.aiPlayers; aiIndex += 1) {
-            const aiFaction = getAIFactionProfile(this.matchConfig.playerFaction, aiIndex);
+            const aiFaction = getAIFactionProfile(this.matchConfig.playerFaction, this.matchConfig.playerColor, aiIndex);
             this.players.push({
                 faction: aiFaction.faction,
                 money: this.matchConfig.startingCredits,
@@ -5730,6 +5761,7 @@ function bindSkirmishSetupPanel() {
         startingCredits: document.getElementById('setup-starting-credits'),
         map: document.getElementById('setup-map'),
         playerFaction: document.getElementById('setup-player-faction'),
+        playerColor: document.getElementById('setup-player-color'),
         aiDifficulty: document.getElementById('setup-ai-difficulty'),
         aiPlayers: document.getElementById('setup-ai-players'),
         aiBuildOrder: document.getElementById('setup-ai-build-order'),
@@ -5742,6 +5774,7 @@ function bindSkirmishSetupPanel() {
         controls.startingCredits.value = String(normalized.startingCredits);
         controls.map.value = normalized.map;
         controls.playerFaction.value = normalized.playerFaction;
+        controls.playerColor.value = normalized.playerColor;
         controls.aiDifficulty.value = normalized.aiDifficulty;
         controls.aiPlayers.value = String(normalized.aiPlayers);
         controls.aiBuildOrder.value = normalized.aiBuildOrder;
@@ -5753,6 +5786,7 @@ function bindSkirmishSetupPanel() {
         startingCredits: controls.startingCredits.value,
         map: controls.map.value,
         playerFaction: controls.playerFaction.value,
+        playerColor: controls.playerColor.value,
         aiDifficulty: controls.aiDifficulty.value,
         aiPlayers: controls.aiPlayers.value,
         aiBuildOrder: controls.aiBuildOrder.value,
