@@ -10,9 +10,13 @@ test('skirmish setup applies selected credits, map, faction, and difficulty befo
   await page.selectOption('#setup-map', 'crossroads');
   await page.selectOption('#setup-player-faction', 'allied');
   await page.selectOption('#setup-player-color', 'green');
+  await page.selectOption('#setup-player-team', '2');
   await page.selectOption('#setup-ai-difficulty', 'hard');
   await page.selectOption('#setup-ai-players', '3');
   await page.selectOption('#setup-ai-build-order', 'air');
+  await page.selectOption('#setup-ai-team-1', '2');
+  await page.selectOption('#setup-ai-team-2', '3');
+  await page.selectOption('#setup-ai-team-3', '3');
   await page.selectOption('#setup-game-speed', 'fast');
   await page.click('#skirmish-start-button');
 
@@ -30,10 +34,14 @@ test('skirmish setup applies selected credits, map, faction, and difficulty befo
       playerFaction: game.players[0].faction,
       playerColor: game.matchConfig.playerColor,
       playerColorValue: game.players[0].color,
+      playerTeam: game.matchConfig.playerTeam,
+      aiTeams: game.matchConfig.aiTeams,
       aiDifficulty: game.aiConfig?.difficulty,
       aiBuildOrder: game.aiConfig?.buildOrder,
       aiBuildOrderLabel: game.players[1]?.aiBuildOrderLabel,
       aiColors: game.players.filter((entry: any) => entry.isAI).map((entry: any) => entry.color),
+      playerAllies: game.getAlliedAIPlayerIndices(0),
+      playerEnemies: game.getHostilePlayerIndices(0),
       spawnPoints: game.mapProfile?.spawnPoints?.slice(0, 4),
       gameSpeed: game.matchConfig.gameSpeed,
       gameSpeedLabel: game.gameSpeedProfile?.label,
@@ -52,11 +60,15 @@ test('skirmish setup applies selected credits, map, faction, and difficulty befo
   expect(applied.playerFaction).toBe('allied');
   expect(applied.playerColor).toBe('green');
   expect(applied.playerColorValue).toBe('#2dbd63');
+  expect(applied.playerTeam).toBe(2);
+  expect(applied.aiTeams).toEqual([2, 3, 3]);
   expect(applied.aiDifficulty).toBe('hard');
   expect(applied.aiBuildOrder).toBe('air');
   expect(applied.aiBuildOrderLabel).toBe('Air Supremacy');
   expect(new Set(applied.aiColors).size).toBe(3);
   expect(applied.aiColors).not.toContain(applied.playerColorValue);
+  expect(applied.playerAllies).toEqual([1]);
+  expect(applied.playerEnemies).toEqual([2, 3]);
   expect(applied.spawnPoints).toHaveLength(4);
   expect(applied.gameSpeed).toBe('fast');
   expect(applied.gameSpeedLabel).toBe('Fast Strike');
@@ -68,6 +80,9 @@ test('skirmish setup applies selected credits, map, faction, and difficulty befo
   expect(applied.briefing).toContain('HARD');
   expect(applied.briefing).toContain('AIR SUPREMACY');
   expect(applied.briefing).toContain('FAST STRIKE');
+  expect(applied.briefing).toContain('P:TEAM 2');
+  expect(applied.briefing).toContain('AI1:TEAM 2');
+  expect(applied.briefing).toContain('AI2:TEAM 3');
 });
 
 test('game speed selection changes simulation tempo for fresh skirmish instances', async ({ page }) => {
@@ -188,7 +203,7 @@ test('skirmish setup exposes twin rivers and boots the distinct battlefield layo
 });
 
 
-test('multi-AI skirmish declares victory only after the last hostile base is gone', async ({ page }) => {
+test('team setup makes allied AI non-hostile and victory waits only on hostile teams', async ({ page }) => {
   await page.goto('/');
   await page.waitForFunction(() => Boolean((window as any).GameState));
 
@@ -198,8 +213,10 @@ test('multi-AI skirmish declares victory only after the last hostile base is gon
       map: 'classic',
       startingCredits: 6500,
       playerFaction: 'soviet',
+      playerTeam: 1,
       aiDifficulty: 'easy',
       aiPlayers: 3,
+      aiTeams: [1, 2, 2],
       aiBuildOrder: 'balanced',
       gameSpeed: 'normal',
     });
@@ -208,6 +225,28 @@ test('multi-AI skirmish declares victory only after the last hostile base is gon
       .map((player: any, index: number) => ({ player, index }))
       .filter(({ player, index }: any) => index !== game.currentPlayer && player.isAI)
       .map(({ index }: any) => index);
+    const allyOwner = aiOwners.find((owner: number) => game.arePlayersAllied(0, owner));
+    const hostileOwners = aiOwners.filter((owner: number) => game.arePlayersHostile(0, owner));
+
+    const alliedTank = game.createUnit('tank', 8, 9, allyOwner);
+    alliedTank.state = 'idle';
+    game.players[allyOwner].units.push(alliedTank);
+
+    const hostileTank = game.createUnit('tank', 13, 9, hostileOwners[0]);
+    hostileTank.state = 'idle';
+    game.players[hostileOwners[0]].units.push(hostileTank);
+
+    const playerTank = game.createUnit('tank', 9, 9, 0);
+    playerTank.state = 'idle';
+    game.players[0].units.push(playerTank);
+
+    const targetSnapshot = {
+      allied: game.arePlayersAllied(0, allyOwner),
+      hostile: hostileOwners.every((owner: number) => game.arePlayersHostile(0, owner)),
+      nearestEnemyOwner: game._findNearestEnemy(playerTank, 0)?.owner ?? null,
+      hostileOwners: game.getHostilePlayerIndices(0),
+      alliedOwners: game.getAlliedAIPlayerIndices(0),
+    };
 
     const wipeBase = (owner: number) => {
       const player = game.players[owner];
@@ -218,31 +257,40 @@ test('multi-AI skirmish declares victory only after the last hostile base is gon
       }
     };
 
-    wipeBase(aiOwners[0]);
-    wipeBase(aiOwners[1]);
+    wipeBase(hostileOwners[0]);
     game.checkVictoryConditions();
     const beforeFinalKill = {
       gameOver: game.gameOver,
-      livingAIs: game.players.filter((player: any, index: number) => index !== game.currentPlayer && player.isAI && game.hasLivingBase(player)).length,
+      livingHostiles: game.getHostilePlayerIndices(0).length,
+      alliedStillAlive: game.hasLivingBase(game.players[allyOwner]),
     };
 
-    wipeBase(aiOwners[2]);
+    wipeBase(hostileOwners[1]);
     game.checkVictoryConditions();
     return {
+      targetSnapshot,
       beforeFinalKill,
       afterFinalKill: {
         gameOver: game.gameOver,
         playerWon: game.matchResult?.playerWon,
         summary: game.matchResult?.summaryText || null,
-        livingAIs: game.players.filter((player: any, index: number) => index !== game.currentPlayer && player.isAI && game.hasLivingBase(player)).length,
+        livingHostiles: game.getHostilePlayerIndices(0).length,
+        alliedStillAlive: game.hasLivingBase(game.players[allyOwner]),
       },
     };
   });
 
+  expect(outcome.targetSnapshot.allied).toBeTruthy();
+  expect(outcome.targetSnapshot.hostile).toBeTruthy();
+  expect(outcome.targetSnapshot.nearestEnemyOwner).toBe(outcome.targetSnapshot.hostileOwners[0]);
+  expect(outcome.targetSnapshot.alliedOwners).toEqual([1]);
+  expect(outcome.targetSnapshot.hostileOwners).toEqual([2, 3]);
   expect(outcome.beforeFinalKill.gameOver).toBeFalsy();
-  expect(outcome.beforeFinalKill.livingAIs).toBe(1);
+  expect(outcome.beforeFinalKill.livingHostiles).toBe(1);
+  expect(outcome.beforeFinalKill.alliedStillAlive).toBeTruthy();
   expect(outcome.afterFinalKill.gameOver).toBeTruthy();
   expect(outcome.afterFinalKill.playerWon).toBeTruthy();
-  expect(outcome.afterFinalKill.livingAIs).toBe(0);
+  expect(outcome.afterFinalKill.livingHostiles).toBe(0);
+  expect(outcome.afterFinalKill.alliedStillAlive).toBeTruthy();
   expect(outcome.afterFinalKill.summary).toContain('Enemy');
 });

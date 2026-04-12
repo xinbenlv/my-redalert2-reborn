@@ -68,8 +68,10 @@ const DEFAULT_MATCH_CONFIG = {
     map: 'classic',
     playerFaction: 'soviet',
     playerColor: 'red',
+    playerTeam: 1,
     aiDifficulty: 'medium',
     aiPlayers: 1,
+    aiTeams: [2, 3, 4],
     aiBuildOrder: 'balanced',
     gameSpeed: 'normal',
 };
@@ -139,6 +141,7 @@ const VETERANCY_BONUSES = {
 };
 const TRANSPORTABLE_INFANTRY_TYPES = new Set(['soldier', 'rocketInfantry', 'flakTrooper', 'engineer']);
 const NON_VEHICLE_ROLES = new Set(['infantry', 'anti-armor infantry', 'anti-air infantry', 'engineer', 'attack dog']);
+const MAX_SKIRMISH_TEAM = 4;
 const UNIT_STANCE_ORDER = ['guard', 'aggressive', 'hold'];
 const UNIT_STANCE_PROFILES = {
     guard: { id: 'guard', label: 'Guard', hotkey: 'G', autoAcquireBonus: 1.5, movingAcquireRadius: 0, chaseLeash: 5.5 },
@@ -151,8 +154,10 @@ function normalizeMatchConfig(config = {}) {
     const map = MAP_PROFILES[config.map] ? config.map : DEFAULT_MATCH_CONFIG.map;
     const playerFaction = config.playerFaction === 'allied' ? 'allied' : 'soviet';
     const playerColor = getPlayerColorId(config.playerColor);
+    const playerTeam = getNormalizedTeamId(config.playerTeam, DEFAULT_MATCH_CONFIG.playerTeam);
     const aiDifficulty = ['easy', 'medium', 'hard'].includes(config.aiDifficulty) ? config.aiDifficulty : DEFAULT_MATCH_CONFIG.aiDifficulty;
     const aiPlayers = Math.max(1, Math.min(3, Number(config.aiPlayers) || DEFAULT_MATCH_CONFIG.aiPlayers));
+    const aiTeams = normalizeAITeamAssignments(config.aiTeams, aiPlayers, playerTeam);
     const aiBuildOrder = AI_BUILD_ORDER_PROFILES[config.aiBuildOrder] ? config.aiBuildOrder : DEFAULT_MATCH_CONFIG.aiBuildOrder;
     const gameSpeed = GAME_SPEED_PROFILES[config.gameSpeed] ? config.gameSpeed : DEFAULT_MATCH_CONFIG.gameSpeed;
     return {
@@ -160,11 +165,48 @@ function normalizeMatchConfig(config = {}) {
         map,
         playerFaction,
         playerColor,
+        playerTeam,
         aiDifficulty,
         aiPlayers,
+        aiTeams,
         aiBuildOrder,
         gameSpeed,
     };
+}
+
+function getNormalizedTeamId(value, fallback = 1) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return fallback;
+    return Math.max(1, Math.min(MAX_SKIRMISH_TEAM, Math.floor(numeric)));
+}
+
+function normalizeAITeamAssignments(rawTeams, aiPlayers, playerTeam) {
+    const source = Array.isArray(rawTeams)
+        ? rawTeams
+        : [rawTeams?.[0], rawTeams?.[1], rawTeams?.[2]];
+    const normalized = [];
+    for (let index = 0; index < 3; index += 1) {
+        const defaultTeam = index + 2 <= MAX_SKIRMISH_TEAM ? index + 2 : MAX_SKIRMISH_TEAM;
+        const team = getNormalizedTeamId(source?.[index], defaultTeam);
+        normalized.push(team);
+    }
+    if (aiPlayers <= 1 && !source?.length) {
+        normalized[0] = playerTeam === 1 ? 2 : 1;
+    }
+    return normalized;
+}
+
+function getTeamLabel(teamId) {
+    return `Team ${getNormalizedTeamId(teamId)}`;
+}
+
+function formatTeamSetupSummary(config) {
+    const normalized = normalizeMatchConfig(config);
+    const slots = [`P:${getTeamLabel(normalized.playerTeam)}`];
+    for (let index = 0; index < normalized.aiPlayers; index += 1) {
+        slots.push(`AI${index + 1}:${getTeamLabel(normalized.aiTeams[index])}`);
+    }
+    return slots.join(' • ');
 }
 
 function getStoredMatchConfig() {
@@ -319,7 +361,8 @@ function updateSetupBriefing(config) {
     const aiPlan = getAIBuildOrderProfile(normalized.aiBuildOrder);
     const speedLabel = getGameSpeedLabel(normalized.gameSpeed).toUpperCase();
     const colorLabel = getPlayerColorPreset(normalized.playerColor).label.toUpperCase();
-    briefingEl.textContent = `${mapProfile.name.toUpperCase()} • ${normalized.playerFaction.toUpperCase()} / ${colorLabel} • ${normalized.aiPlayers} AI • ${normalized.aiDifficulty.toUpperCase()} • ${aiPlan.label.toUpperCase()} • ${speedLabel} • $${normalized.startingCredits}`;
+    const teamSummary = formatTeamSetupSummary(normalized).toUpperCase();
+    briefingEl.textContent = `${mapProfile.name.toUpperCase()} • ${normalized.playerFaction.toUpperCase()} / ${colorLabel} • ${normalized.aiPlayers} AI • ${normalized.aiDifficulty.toUpperCase()} • ${aiPlan.label.toUpperCase()} • ${speedLabel} • ${teamSummary} • $${normalized.startingCredits}`;
 }
 
 // ==================== GAME STATE ====================
@@ -365,13 +408,25 @@ class GameState {
         this.fog = [];
         this.generateMap();
 
-        // Players: Human vs AI coalition
+        // Players: Human vs AI opponents / allies
         const playerFaction = getPlayerFactionProfile(this.matchConfig.playerFaction, this.matchConfig.playerColor);
         this.players = [
-            { faction: playerFaction.faction, money: this.matchConfig.startingCredits, buildings: [], units: [], color: playerFaction.color, isAI: false, lowPowerNotified: false, startingBaseGranted: false }
+            {
+                faction: playerFaction.faction,
+                money: this.matchConfig.startingCredits,
+                buildings: [],
+                units: [],
+                color: playerFaction.color,
+                isAI: false,
+                lowPowerNotified: false,
+                startingBaseGranted: false,
+                team: this.matchConfig.playerTeam,
+                teamLabel: getTeamLabel(this.matchConfig.playerTeam),
+            }
         ];
         for (let aiIndex = 0; aiIndex < this.matchConfig.aiPlayers; aiIndex += 1) {
             const aiFaction = getAIFactionProfile(this.matchConfig.playerFaction, this.matchConfig.playerColor, aiIndex);
+            const aiTeam = this.matchConfig.aiTeams[aiIndex] || (aiIndex + 2);
             this.players.push({
                 faction: aiFaction.faction,
                 money: this.matchConfig.startingCredits,
@@ -383,6 +438,8 @@ class GameState {
                 startingBaseGranted: false,
                 aiBuildOrder: this.aiConfig.buildOrder,
                 aiBuildOrderLabel: this.aiConfig.label,
+                team: aiTeam,
+                teamLabel: getTeamLabel(aiTeam),
             });
         }
         this.neutralPlayerIndex = this.players.length;
@@ -589,6 +646,46 @@ class GameState {
         return player.buildings.some(building => building.hp > 0) || this.hasLiveMCV(player);
     }
 
+    getPlayerTeam(owner) {
+        return this.getPlayer(owner)?.team ?? null;
+    }
+
+    arePlayersAllied(ownerA, ownerB) {
+        if (!Number.isInteger(ownerA) || !Number.isInteger(ownerB)) return false;
+        if (ownerA === ownerB) return true;
+        if (ownerA === this.neutralPlayerIndex || ownerB === this.neutralPlayerIndex) return false;
+        const teamA = this.getPlayerTeam(ownerA);
+        const teamB = this.getPlayerTeam(ownerB);
+        return teamA !== null && teamA === teamB;
+    }
+
+    arePlayersHostile(ownerA, ownerB) {
+        if (!Number.isInteger(ownerA) || !Number.isInteger(ownerB)) return false;
+        if (ownerA === ownerB) return false;
+        if (ownerA === this.neutralPlayerIndex || ownerB === this.neutralPlayerIndex) return false;
+        return !this.arePlayersAllied(ownerA, ownerB);
+    }
+
+    getHostilePlayerIndices(owner) {
+        return this.players
+            .map((player, index) => ({ player, index }))
+            .filter(({ player, index }) => index !== this.neutralPlayerIndex
+                && player?.canLose !== false
+                && this.arePlayersHostile(owner, index)
+                && this.hasLivingBase(player))
+            .map(({ index }) => index);
+    }
+
+    getAlliedAIPlayerIndices(owner) {
+        return this.players
+            .map((player, index) => ({ player, index }))
+            .filter(({ player, index }) => player?.isAI
+                && index !== owner
+                && index !== this.neutralPlayerIndex
+                && this.arePlayersAllied(owner, index))
+            .map(({ index }) => index);
+    }
+
     getRemainingForces(player) {
         return {
             buildings: player.buildings.filter(building => building.hp > 0).length,
@@ -613,10 +710,20 @@ class GameState {
         const reason = document.getElementById('match-summary-reason');
         const stats = document.getElementById('match-summary-stats');
         const playerStats = this.getPlayerStats(0);
-        const aiIndices = this.players
-            .map((player, index) => player?.isAI ? index : -1)
-            .filter(index => index >= 0);
-        const enemyStats = aiIndices.reduce((totals, owner) => {
+        const hostileIndices = this.getHostilePlayerIndices(this.currentPlayer);
+        const alliedIndices = this.getAlliedAIPlayerIndices(this.currentPlayer);
+        const enemyStats = hostileIndices.reduce((totals, owner) => {
+            const statsForPlayer = this.getPlayerStats(owner);
+            totals.unitsBuilt += statsForPlayer.unitsBuilt;
+            totals.unitsLost += statsForPlayer.unitsLost;
+            totals.unitsKilled += statsForPlayer.unitsKilled;
+            totals.buildingsConstructed += statsForPlayer.buildingsConstructed;
+            totals.buildingsLost += statsForPlayer.buildingsLost;
+            totals.buildingsDestroyed += statsForPlayer.buildingsDestroyed;
+            totals.oreDelivered += statsForPlayer.oreDelivered;
+            return totals;
+        }, this.createEmptyPlayerStats());
+        const allyStats = alliedIndices.reduce((totals, owner) => {
             const statsForPlayer = this.getPlayerStats(owner);
             totals.unitsBuilt += statsForPlayer.unitsBuilt;
             totals.unitsLost += statsForPlayer.unitsLost;
@@ -628,7 +735,13 @@ class GameState {
             return totals;
         }, this.createEmptyPlayerStats());
         const playerForces = this.getRemainingForces(this.players[0]);
-        const enemyForces = aiIndices.reduce((totals, owner) => {
+        const enemyForces = hostileIndices.reduce((totals, owner) => {
+            const forces = this.getRemainingForces(this.players[owner]);
+            totals.buildings += forces.buildings;
+            totals.units += forces.units;
+            return totals;
+        }, { buildings: 0, units: 0 });
+        const allyForces = alliedIndices.reduce((totals, owner) => {
             const forces = this.getRemainingForces(this.players[owner]);
             totals.buildings += forces.buildings;
             totals.units += forces.units;
@@ -645,6 +758,7 @@ class GameState {
                     <div class="summary-line highlight"><span>Result</span><span>${result.playerWon ? 'Enemy eliminated' : 'Base lost'}</span></div>
                     <div class="summary-line"><span>Player base status</span><span>${playerForces.buildings} buildings / ${playerForces.units} units</span></div>
                     <div class="summary-line"><span>Enemy base status</span><span>${enemyForces.buildings} buildings / ${enemyForces.units} units</span></div>
+                    ${alliedIndices.length ? `<div class="summary-line"><span>Allied AI status</span><span>${allyForces.buildings} buildings / ${allyForces.units} units</span></div>` : ''}
                 </div>
                 <div class="summary-card player">
                     <h3>Your Forces</h3>
@@ -656,8 +770,19 @@ class GameState {
                     <div class="summary-line"><span>Buildings destroyed</span><span>${playerStats.buildingsDestroyed}</span></div>
                     <div class="summary-line"><span>Ore delivered</span><span>$${Math.floor(playerStats.oreDelivered)}</span></div>
                 </div>
+                ${alliedIndices.length ? `
+                <div class="summary-card player">
+                    <h3>Allied Wing</h3>
+                    <div class="summary-line"><span>Units built</span><span>${allyStats.unitsBuilt}</span></div>
+                    <div class="summary-line"><span>Units lost</span><span>${allyStats.unitsLost}</span></div>
+                    <div class="summary-line"><span>Units killed</span><span>${allyStats.unitsKilled}</span></div>
+                    <div class="summary-line"><span>Buildings deployed</span><span>${allyStats.buildingsConstructed}</span></div>
+                    <div class="summary-line"><span>Buildings lost</span><span>${allyStats.buildingsLost}</span></div>
+                    <div class="summary-line"><span>Buildings destroyed</span><span>${allyStats.buildingsDestroyed}</span></div>
+                    <div class="summary-line"><span>Ore delivered</span><span>$${Math.floor(allyStats.oreDelivered)}</span></div>
+                </div>` : ''}
                 <div class="summary-card enemy">
-                    <h3>Enemy Coalition</h3>
+                    <h3>Enemy Forces</h3>
                     <div class="summary-line"><span>Units built</span><span>${enemyStats.unitsBuilt}</span></div>
                     <div class="summary-line"><span>Units lost</span><span>${enemyStats.unitsLost}</span></div>
                     <div class="summary-line"><span>Units killed</span><span>${enemyStats.unitsKilled}</span></div>
@@ -692,7 +817,7 @@ class GameState {
     }
 
     getEnemyPlayers(owner) {
-        return this.players.filter((player, index) => index !== owner && index !== this.neutralPlayerIndex && player?.canLose !== false && this.hasLivingBase(player));
+        return this.getHostilePlayerIndices(owner).map(index => this.players[index]);
     }
 
     getClosestEnemyPlayer(aiPlayer) {
@@ -1873,7 +1998,7 @@ class GameState {
 
     _findEnemyUnitAt(tx, ty) {
         for (let pi = 0; pi < this.players.length; pi++) {
-            if (pi === this.currentPlayer) continue;
+            if (!this.arePlayersHostile(this.currentPlayer, pi)) continue;
             for (const u of this.players[pi].units) {
                 if (u.state === 'dead') continue;
                 if (Math.hypot(u.x - tx, u.y - ty) < 1.5) return u;
@@ -1884,7 +2009,7 @@ class GameState {
 
     _findEnemyBuildingAt(tx, ty) {
         for (let pi = 0; pi < this.players.length; pi++) {
-            if (pi === this.currentPlayer) continue;
+            if (!this.arePlayersHostile(this.currentPlayer, pi)) continue;
             for (const b of this.players[pi].buildings) {
                 if (tx >= b.tx && tx < b.tx + b.size && ty >= b.ty && ty < b.ty + b.size) return b;
             }
@@ -4155,7 +4280,7 @@ class GameState {
         const searchRadius = options.searchRadius ?? this.getUnitAutoAcquireRadius(unit, options.mode || 'idle');
         let best = null, bestDist = searchRadius + 0.01;
         for (let pi = 0; pi < this.players.length; pi++) {
-            if (pi === ownerIdx) continue;
+            if (!this.arePlayersHostile(ownerIdx, pi)) continue;
             for (const eu of this.players[pi].units) {
                 if (eu.state === 'dead' || eu.hp <= 0 || !this.canEntityTarget(unit, eu)) continue;
                 const target = this.getEntityAnchor(eu);
@@ -4244,7 +4369,7 @@ class GameState {
                 const splashRadius = 1.2;
                 const hitX = p.tx, hitY = p.ty;
                 for (let pi2 = 0; pi2 < this.players.length; pi2++) {
-                    if (pi2 === p.owner) continue; // don't splash friendlies
+                    if (!this.arePlayersHostile(p.owner, pi2)) continue; // don't splash friendlies/allies
                     for (const eu of this.players[pi2].units) {
                         if (eu.state === 'dead' || eu.hp <= 0) continue;
                         const sd = Math.hypot(eu.x - hitX, eu.y - hitY);
@@ -5035,8 +5160,10 @@ class GameState {
             return;
         }
 
-        const livingAIs = this.players.filter((player, index) => index !== this.currentPlayer && player?.isAI && this.hasLivingBase(player));
-        if (livingAIs.length === 0) {
+        const livingHostiles = this.getHostilePlayerIndices(this.currentPlayer)
+            .map(index => this.players[index])
+            .filter(player => this.hasLivingBase(player));
+        if (livingHostiles.length === 0) {
             this.finishMatch(1);
         }
     }
@@ -5835,12 +5962,27 @@ function bindSkirmishSetupPanel() {
         map: document.getElementById('setup-map'),
         playerFaction: document.getElementById('setup-player-faction'),
         playerColor: document.getElementById('setup-player-color'),
+        playerTeam: document.getElementById('setup-player-team'),
         aiDifficulty: document.getElementById('setup-ai-difficulty'),
         aiPlayers: document.getElementById('setup-ai-players'),
         aiBuildOrder: document.getElementById('setup-ai-build-order'),
+        aiTeam1: document.getElementById('setup-ai-team-1'),
+        aiTeam2: document.getElementById('setup-ai-team-2'),
+        aiTeam3: document.getElementById('setup-ai-team-3'),
         gameSpeed: document.getElementById('setup-game-speed'),
     };
-    if (!overlay || !startButton || Object.values(controls).some(control => !control)) return;
+    const aiTeamWrappers = [
+        document.getElementById('setup-ai-team-1-wrap'),
+        document.getElementById('setup-ai-team-2-wrap'),
+        document.getElementById('setup-ai-team-3-wrap'),
+    ];
+    if (!overlay || !startButton || Object.values(controls).some(control => !control) || aiTeamWrappers.some(wrapper => !wrapper)) return;
+
+    const syncAITeamVisibility = aiPlayers => {
+        aiTeamWrappers.forEach((wrapper, index) => {
+            wrapper.style.display = index < aiPlayers ? '' : 'none';
+        });
+    };
 
     const applyControls = config => {
         const normalized = normalizeMatchConfig(config);
@@ -5848,10 +5990,15 @@ function bindSkirmishSetupPanel() {
         controls.map.value = normalized.map;
         controls.playerFaction.value = normalized.playerFaction;
         controls.playerColor.value = normalized.playerColor;
+        controls.playerTeam.value = String(normalized.playerTeam);
         controls.aiDifficulty.value = normalized.aiDifficulty;
         controls.aiPlayers.value = String(normalized.aiPlayers);
         controls.aiBuildOrder.value = normalized.aiBuildOrder;
+        controls.aiTeam1.value = String(normalized.aiTeams[0]);
+        controls.aiTeam2.value = String(normalized.aiTeams[1]);
+        controls.aiTeam3.value = String(normalized.aiTeams[2]);
         controls.gameSpeed.value = normalized.gameSpeed;
+        syncAITeamVisibility(normalized.aiPlayers);
         updateSetupBriefing(normalized);
     };
 
@@ -5860,8 +6007,10 @@ function bindSkirmishSetupPanel() {
         map: controls.map.value,
         playerFaction: controls.playerFaction.value,
         playerColor: controls.playerColor.value,
+        playerTeam: controls.playerTeam.value,
         aiDifficulty: controls.aiDifficulty.value,
         aiPlayers: controls.aiPlayers.value,
+        aiTeams: [controls.aiTeam1.value, controls.aiTeam2.value, controls.aiTeam3.value],
         aiBuildOrder: controls.aiBuildOrder.value,
         gameSpeed: controls.gameSpeed.value,
     });
@@ -5869,8 +6018,8 @@ function bindSkirmishSetupPanel() {
     applyControls(getStoredMatchConfig());
     Object.values(controls).forEach(control => control.addEventListener('change', () => {
         const config = readControls();
+        applyControls(config);
         persistMatchConfig(config);
-        updateSetupBriefing(config);
         overlay.classList.remove('hidden');
         sessionStorage.removeItem(MATCH_PANEL_COLLAPSED_KEY);
     }));
