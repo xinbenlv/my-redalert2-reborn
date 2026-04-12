@@ -4477,13 +4477,14 @@ class GameState {
         const baseX = ai.buildings.length > 0 ? ai.buildings[0].tx : MAP_SIZE - 10;
         const baseY = ai.buildings.length > 0 ? ai.buildings[0].ty : MAP_SIZE - 10;
         const builtTypes = new Set(ai.buildings.filter(b => b.built && b.hp > 0).map(b => b.type));
+        const enemyPlayer = this.getClosestEnemyPlayer(ai);
         if (this.manageAIBuildingEconomy(ai)) return;
 
         const tryBuild = type => {
             const def = BUILD_TYPES[type];
             if (ai.money < def.cost) return false;
             if (this.getMissingPrerequisites(ai, def.prerequisites).length > 0) return false;
-            const pos = this._aiPickBuildPos(baseX, baseY, type);
+            const pos = this._aiPickBuildPos(baseX, baseY, type, ai, enemyPlayer);
             if (!pos) return false;
             ai.money -= def.cost;
             const b = this.createBuilding(type, pos.x, pos.y, aiIndex);
@@ -4524,7 +4525,6 @@ class GameState {
         const artilleryFactories = this.getProductionBuildings(ai, 'artillery');
         const apocalypseFactories = this.getProductionBuildings(ai, 'apocalypseTank');
         const airfields = this.getProductionBuildings(ai, 'harrier');
-        const enemyPlayer = this.getClosestEnemyPlayer(ai);
         if (!enemyPlayer) return;
         const enemyHeavyUnits = enemyPlayer.units.filter(u => u.state !== 'dead' && u.armorType === 'heavy').length;
         const enemyAirUnits = enemyPlayer.units.filter(u => u.state !== 'dead' && this.isAirUnit(u)).length;
@@ -4690,41 +4690,89 @@ class GameState {
         }
     }
 
-    _aiPickBuildPos(baseX, baseY, type) {
-
-        const size = BUILD_TYPES[type].size;
-        // Try random positions near base
-        for (let attempt = 0; attempt < 20; attempt++) {
-            const ox = Math.floor(Math.random() * 10 - 3);
-            const oy = Math.floor(Math.random() * 10 - 3);
-            const tx = baseX + ox;
-            const ty = baseY + oy;
-
-            if (tx < 0 || ty < 0 || tx + size > MAP_SIZE || ty + size > MAP_SIZE) continue;
-
-            // Check terrain
-            let valid = true;
-            for (let dy = 0; dy < size; dy++) {
-                for (let dx = 0; dx < size; dx++) {
-                    const t = this.map[ty + dy]?.[tx + dx];
-                    if (!t || t.type === 'water') { valid = false; break; }
-                }
-                if (!valid) break;
-            }
-            if (!valid) continue;
-
-            // Check overlap with existing buildings
-            const allBuildings = this.players.flatMap(p => p.buildings);
-            let overlap = false;
-            for (const bp of allBuildings) {
-                if (tx < bp.tx + bp.size && tx + size > bp.tx &&
-                    ty < bp.ty + bp.size && ty + size > bp.ty) { overlap = true; break; }
-            }
-            if (overlap) continue;
-
-            return { x: tx, y: ty };
+    getPlayerBaseAnchor(player) {
+        if (!player) return null;
+        const builtBuildings = player.buildings.filter(building => building.hp > 0 && building.built !== false);
+        const anchors = builtBuildings
+            .map(building => this.getEntityAnchor(building))
+            .filter(Boolean);
+        if (anchors.length > 0) {
+            const total = anchors.reduce((sum, anchor) => ({ x: sum.x + anchor.x, y: sum.y + anchor.y }), { x: 0, y: 0 });
+            return {
+                x: total.x / anchors.length,
+                y: total.y / anchors.length,
+            };
         }
-        return null;
+        return this.getEntityAnchor(player.units.find(unit => unit.state !== 'dead')) || null;
+    }
+
+    _scoreAIDefensivePlacement(type, tx, ty, baseAnchor, enemyAnchor, aiPlayer) {
+        const size = BUILD_TYPES[type].size;
+        const center = { x: tx + size / 2 - 0.5, y: ty + size / 2 - 0.5 };
+        const dx = center.x - baseAnchor.x;
+        const dy = center.y - baseAnchor.y;
+        const distBase = Math.hypot(dx, dy);
+        const enemyDx = enemyAnchor.x - baseAnchor.x;
+        const enemyDy = enemyAnchor.y - baseAnchor.y;
+        const enemyDist = Math.max(0.001, Math.hypot(enemyDx, enemyDy));
+        const forwardX = enemyDx / enemyDist;
+        const forwardY = enemyDy / enemyDist;
+        const lateralX = -forwardY;
+        const lateralY = forwardX;
+        const forwardProjection = dx * forwardX + dy * forwardY;
+        const lateralProjection = dx * lateralX + dy * lateralY;
+        const existingDefenses = aiPlayer?.buildings?.filter(building => building.hp > 0 && this.isDefensiveBuilding(building)) || [];
+        const sameTypeCount = existingDefenses.filter(building => building.type === type).length;
+        const desiredForward = 4.5 + Math.min(2.5, existingDefenses.length * 0.4);
+        const desiredLateral = Math.min(3.5, 1.25 + sameTypeCount * 0.85);
+        const preferredFlankSign = sameTypeCount % 2 === 0 ? 1 : -1;
+
+        let score = 0;
+        score += Math.max(0, forwardProjection) * 6;
+        score -= Math.abs(distBase - desiredForward) * 3.2;
+        score -= Math.abs(lateralProjection - (preferredFlankSign * desiredLateral)) * 1.8;
+        if (forwardProjection < 1.5) score -= 30;
+        if (distBase < 2.5) score -= 18;
+        if (distBase > 8.5) score -= (distBase - 8.5) * 4;
+
+        for (const defense of existingDefenses) {
+            const anchor = this.getEntityAnchor(defense);
+            if (!anchor) continue;
+            const distance = Math.hypot(center.x - anchor.x, center.y - anchor.y);
+            if (distance < 2.75) score -= 18;
+            else score += Math.min(6, distance * 0.4);
+        }
+
+        return score;
+    }
+
+    _aiPickBuildPos(baseX, baseY, type, aiPlayer = null, enemyPlayer = null) {
+        const baseAnchor = this.getPlayerBaseAnchor(aiPlayer) || { x: baseX + 1, y: baseY + 1 };
+        const roundedAnchorX = Math.round(baseAnchor.x);
+        const roundedAnchorY = Math.round(baseAnchor.y);
+        const isDefensive = ['pillbox', 'sentryGun', 'patriotBattery'].includes(type);
+        if (!isDefensive) {
+            const nearby = this.findNearbyConstructionSite(type, roundedAnchorX, roundedAnchorY, 10);
+            if (nearby) return { x: nearby.tx, y: nearby.ty };
+        }
+
+        const enemyAnchor = this.getPlayerBaseAnchor(enemyPlayer);
+        const candidates = [];
+        for (let ty = Math.max(0, roundedAnchorY - 12); ty <= Math.min(MAP_SIZE - 1, roundedAnchorY + 12); ty++) {
+            for (let tx = Math.max(0, roundedAnchorX - 12); tx <= Math.min(MAP_SIZE - 1, roundedAnchorX + 12); tx++) {
+                if (!this.canPlaceBuildingAt(type, tx, ty)) continue;
+                const center = { x: tx + BUILD_TYPES[type].size / 2 - 0.5, y: ty + BUILD_TYPES[type].size / 2 - 0.5 };
+                const distBase = Math.hypot(center.x - baseAnchor.x, center.y - baseAnchor.y);
+                let score = -distBase;
+                if (isDefensive && enemyAnchor) {
+                    score = this._scoreAIDefensivePlacement(type, tx, ty, baseAnchor, enemyAnchor, aiPlayer);
+                }
+                candidates.push({ tx, ty, score });
+            }
+        }
+
+        candidates.sort((a, b) => b.score - a.score);
+        return candidates[0] ? { x: candidates[0].tx, y: candidates[0].ty } : null;
     }
 
     // ==================== VICTORY / DEFEAT ====================
