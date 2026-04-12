@@ -110,7 +110,7 @@
 - [~] APC / IFV（已补 APC + 基础 IFV 防空车；APC 步兵装载 / 卸载与基础运输协同 AI 已补，但更复杂的多车编组 / 目标切换仍未完成）
 - [x] Anti-air vehicle
 - [x] Artillery / V3 / Siege 类远程单位
-- [ ] Terror Drone / Mirage / Prism Tank / Apocalypse / Kirov 等特色载具
+- [~] Terror Drone / Mirage / Prism Tank / Apocalypse / Kirov 等特色载具（已补 Apocalypse Tank + Prism Tank；仍缺 Terror Drone / Mirage / Kirov 等更强特化单位）
 - [x] MCV
 - [ ] Repair IFV / support vehicle（如需要）
 
@@ -275,7 +275,7 @@
 
 ### C2. P1：把“中局节奏”补出来
 - [x] Battle Lab
-- [~] 更多载具与反制链（已补 V3 Artillery + APC 装载/卸载 + 基础运输协同 AI + IFV + Flak Track + Harrier 回场补弹，仍缺更复杂的运输战术与更完整的空地反制反馈）
+- [~] 更多载具与反制链（已补 V3 Artillery + APC 装载/卸载 + 基础运输协同 AI + IFV + Flak Track + Prism Tank 攻坚单位 + Harrier 回场补弹，仍缺更复杂的运输战术与更完整的空地反制反馈）
 - [x] veterancy
 - [x] air units（已补 Airfield + Harrier 基础空袭链路）
 - [x] more maps

@@ -1780,6 +1780,86 @@ class ModelFactory {
         return group;
     }
 
+    createPrismTank(factionColor) {
+        const fc = this._factionColor(factionColor);
+        const group = new THREE.Group();
+        const hullMat = this._mat(0x87919a, { roughness: 0.44, metalness: 0.32 });
+
+        const lowerHull = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.2, 1.18), hullMat);
+        lowerHull.position.y = 0.16;
+        lowerHull.castShadow = true;
+        group.add(lowerHull);
+
+        const upperHull = new THREE.Mesh(
+            new THREE.BoxGeometry(0.68, 0.18, 0.66),
+            this._mat(0xb2bcc4, { roughness: 0.34, metalness: 0.28 })
+        );
+        upperHull.position.set(0, 0.32, -0.02);
+        upperHull.castShadow = true;
+        group.add(upperHull);
+
+        const turret = new THREE.Group();
+        turret.position.set(0, 0.46, 0.02);
+        group.add(turret);
+        group.userData.turret = turret;
+
+        const turretBase = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.24, 0.3, 0.16, 12),
+            this._mat(fc, { roughness: 0.28, metalness: 0.42, emissive: fc, emissiveIntensity: 0.1 })
+        );
+        turretBase.castShadow = true;
+        turret.add(turretBase);
+
+        const prismHousing = new THREE.Mesh(
+            new THREE.BoxGeometry(0.26, 0.18, 0.56),
+            this._mat(0x5f6972, { roughness: 0.38, metalness: 0.46 })
+        );
+        prismHousing.position.set(0, 0.03, 0.2);
+        prismHousing.castShadow = true;
+        turret.add(prismHousing);
+
+        const prismCrystal = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.08, 0.12, 0.3, 6),
+            this._mat(0x7cefff, { roughness: 0.05, metalness: 0.08, emissive: 0x6fe7ff, emissiveIntensity: 0.65 })
+        );
+        prismCrystal.rotation.z = Math.PI / 2;
+        prismCrystal.position.set(0, 0.1, 0.44);
+        turret.add(prismCrystal);
+
+        const emitter = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.045, 0.065, 0.78, 8),
+            this._mat(0xcfd6dc, { roughness: 0.18, metalness: 0.52 })
+        );
+        emitter.rotation.x = Math.PI / 2;
+        emitter.position.set(0, 0.08, 0.74);
+        emitter.castShadow = true;
+        turret.add(emitter);
+        group.userData.barrel = emitter;
+
+        const glowStripe = new THREE.Mesh(
+            new THREE.BoxGeometry(0.7, 0.04, 0.72),
+            this._mat(fc, { roughness: 0.2, metalness: 0.3, emissive: fc, emissiveIntensity: 0.22 })
+        );
+        glowStripe.position.set(0, 0.28, -0.1);
+        group.add(glowStripe);
+
+        const sideSkirtLeft = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 1.28), this._mat(0x2a2f34, { roughness: 0.74, metalness: 0.16 }));
+        sideSkirtLeft.position.set(-0.43, 0.1, 0);
+        group.add(sideSkirtLeft);
+        const sideSkirtRight = sideSkirtLeft.clone();
+        sideSkirtRight.position.x = 0.43;
+        group.add(sideSkirtRight);
+
+        const muzzleFlash = new THREE.PointLight(0x8cf2ff, 0, 3.2);
+        muzzleFlash.position.set(0, 0.56, 1.08);
+        group.add(muzzleFlash);
+        group.userData.muzzleFlash = muzzleFlash;
+
+        group.userData.modelType = 'prismTank';
+        group.userData.factionColor = fc;
+        return group;
+    }
+
     createAirfield(factionColor) {
         const fc = this._factionColor(factionColor);
         const group = new THREE.Group();

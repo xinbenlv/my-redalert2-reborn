@@ -297,6 +297,29 @@ window.UNIT_TYPES = {
         producedBy: 'warFactory',
         prerequisites: ['warFactory', 'battleLab']
     },
+    prismTank: {
+        name: 'Prism Tank',
+        cost: 1650,
+        trainTime: 10800,
+        hp: 220,
+        speed: 0.76,
+        damage: 58,
+        range: 8.4,
+        fireRate: 2100,
+        sight: 8,
+        armorType: 'light',
+        role: 'high-tech prism siege tank',
+        projectileSpeed: 11.5,
+        weaponType: 'prismBeam',
+        damageProfile: {
+            infantry: 0.7,
+            light: 1.15,
+            heavy: 1.2,
+            building: 1.75
+        },
+        producedBy: 'warFactory',
+        prerequisites: ['warFactory', 'battleLab']
+    },
     harrier: {
         name: 'Harrier',
         cost: 1400,

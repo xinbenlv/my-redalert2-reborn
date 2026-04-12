@@ -101,7 +101,7 @@ window.BUILD_TYPES = {
         size: 3,
         powerSupply: 0,
         powerDrain: 45,
-        production: ['harvester', 'tank', 'apc', 'ifv', 'flakTrack', 'artillery', 'mcv'],
+        production: ['harvester', 'tank', 'apc', 'ifv', 'flakTrack', 'artillery', 'prismTank', 'mcv'],
         description: 'Produces vehicles.',
         prerequisites: ['constructionYard', 'powerPlant', 'refinery', 'barracks']
     },

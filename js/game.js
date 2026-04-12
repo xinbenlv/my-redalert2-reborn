@@ -4420,6 +4420,8 @@ class GameState {
                 score += 35;
             } else if (type === 'apocalypseTank') {
                 score += 55;
+            } else if (type === 'prismTank') {
+                score += 52;
             } else if (type === 'apc') {
                 score += 38;
             } else if (type === 'ifv') {
@@ -4757,6 +4759,7 @@ class GameState {
         const flakTrackFactories = this.getProductionBuildings(ai, 'flakTrack');
         const artilleryFactories = this.getProductionBuildings(ai, 'artillery');
         const apocalypseFactories = this.getProductionBuildings(ai, 'apocalypseTank');
+        const prismFactories = this.getProductionBuildings(ai, 'prismTank');
         const airfields = this.getProductionBuildings(ai, 'harrier');
         if (warFactories.length > 0 && harvesters < Math.max(1, refineries) && ai.money >= UNIT_TYPES.harvester.cost) {
             const wf = warFactories.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
@@ -4799,6 +4802,17 @@ class GameState {
             ai.money -= UNIT_TYPES.flakTrack.cost;
             if (!wf.training) wf.training = 'flakTrack';
             else wf.trainQueue.push('flakTrack');
+            return;
+        }
+
+        const aiPrismCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'prismTank').length + this._getTotalTrainQueue(ai, 'prismTank');
+        const wantsPrismSiege = this.aiConfig.buildOrder === 'balanced' || this.aiConfig.buildOrder === 'air';
+        const desiredPrismCount = Math.max(0, Math.ceil(enemyDefenses / 2) + (enemyBuildings >= 7 ? 1 : 0));
+        if (!antiAirEmergency && builtTypes.has('battleLab') && prismFactories.length > 0 && ai.money >= UNIT_TYPES.prismTank.cost && wantsPrismSiege && (enemyDefenses >= 2 || enemyBuildings >= 7) && aiPrismCount < desiredPrismCount) {
+            const wf = prismFactories.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
+            ai.money -= UNIT_TYPES.prismTank.cost;
+            if (!wf.training) wf.training = 'prismTank';
+            else wf.trainQueue.push('prismTank');
             return;
         }
 
@@ -5485,7 +5499,7 @@ class GameState {
                 this.addBuildItem(container, type, def.name, def.cost, def.description, false);
             });
         } else {
-            ['soldier', 'attackDog', 'rocketInfantry', 'flakTrooper', 'engineer', 'harvester', 'tank', 'apc', 'ifv', 'flakTrack', 'artillery', 'harrier', 'apocalypseTank', 'mcv'].forEach(type => {
+            ['soldier', 'attackDog', 'rocketInfantry', 'flakTrooper', 'engineer', 'harvester', 'tank', 'apc', 'ifv', 'flakTrack', 'artillery', 'prismTank', 'harrier', 'apocalypseTank', 'mcv'].forEach(type => {
                 const def = UNIT_TYPES[type];
                 const description = type === 'engineer'
                     ? 'Captures enemy buildings on contact.'
