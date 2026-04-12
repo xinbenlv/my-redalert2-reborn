@@ -2604,6 +2604,45 @@ class GameState {
         return (ifvCount * 2) + (flakTrackCount * 2) + flakTrooperCount + (patriotBatteryCount * 3);
     }
 
+    getAIBuildReserve(type) {
+        if (type === 'airfield') return Math.max(this.aiConfig.airfieldReserve, 500);
+        if (type === 'battleLab') return this.aiConfig.battleLabReserve;
+        if (type === 'advancedPowerPlant') return Math.max(350, Math.min(this.aiConfig.airfieldReserve, 800));
+        return 0;
+    }
+
+    getAINextTechTargets(ai, builtTypes) {
+        if (!ai || !builtTypes?.has('warFactory')) return [];
+        const goals = [];
+        const hasPrimaryHighTech = builtTypes.has('airfield') || builtTypes.has('battleLab');
+        if (this.aiConfig.buildOrder === 'air') {
+            if (builtTypes.has('airfield') && !builtTypes.has('battleLab')) goals.push('battleLab');
+        } else if (builtTypes.has('battleLab') && !builtTypes.has('airfield')) {
+            goals.push('airfield');
+        }
+        if (hasPrimaryHighTech && !builtTypes.has('advancedPowerPlant')) goals.push('advancedPowerPlant');
+        return goals;
+    }
+
+    tryAIBuildTechTargets(ai, aiIndex, builtTypes, baseX, baseY, enemyPlayer) {
+        const techTargets = this.getAINextTechTargets(ai, builtTypes);
+        for (const type of techTargets) {
+            const def = BUILD_TYPES[type];
+            if (!def || builtTypes.has(type)) continue;
+            if (ai.money < def.cost + this.getAIBuildReserve(type)) continue;
+            if (this.getMissingPrerequisites(ai, def.prerequisites).length > 0) continue;
+            const pos = this._aiPickBuildPos(baseX, baseY, type, ai, enemyPlayer);
+            if (!pos) continue;
+            ai.money -= def.cost;
+            const building = this.createBuilding(type, pos.x, pos.y, aiIndex);
+            building.built = false;
+            building.buildProgress = 0;
+            ai.buildings.push(building);
+            return true;
+        }
+        return false;
+    }
+
     getPrimarySelectedBuilding() {
         return this.selected.length === 1 && this.selected[0]?.tx !== undefined ? this.selected[0] : null;
     }
@@ -4622,6 +4661,7 @@ class GameState {
         if (wantsBattleLabFirst && builtTypes.has('warFactory') && ai.money >= BUILD_TYPES.battleLab.cost + this.aiConfig.battleLabReserve && tryBuild('battleLab')) return;
         if (!builtTypes.has('airfield') && builtTypes.has('warFactory') && ai.money >= BUILD_TYPES.airfield.cost + Math.max(this.aiConfig.airfieldReserve, 700) && tryBuild('airfield')) return;
         if (!builtTypes.has('battleLab') && builtTypes.has('warFactory') && ai.money >= BUILD_TYPES.battleLab.cost + this.aiConfig.battleLabReserve && tryBuild('battleLab')) return;
+        if (this.tryAIBuildTechTargets(ai, aiIndex, builtTypes, baseX, baseY, enemyPlayer)) return;
         const desiredPowerPlants = Math.max(1, this.aiConfig.desiredPowerPlants + this.aiConfig.desiredPowerPlantsBonus);
         const desiredPillboxes = Math.max(0, this.aiConfig.desiredPillboxes + this.aiConfig.desiredPillboxesBonus);
         const desiredSentryGuns = Math.max(0, this.aiConfig.desiredSentryGuns + this.aiConfig.desiredSentryGunsBonus);
