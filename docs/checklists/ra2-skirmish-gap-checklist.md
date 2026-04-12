@@ -100,9 +100,9 @@
 - [x] Flak Trooper / anti-air infantry
 - [ ] Spy
 - [ ] Tanya / elite commando 类单位
-- [ ] Desolator / Tesla Trooper / Chrono Legionnaire / GI 等特色单位
+- [~] Desolator / Tesla Trooper / Chrono Legionnaire / GI 等特色单位（已补 GI deployable rifle infantry；仍缺 Desolator / Tesla Trooper / Chrono Legionnaire 等更强特化步兵）
 - [x] 兵种驻守建筑（garrison）
-- [ ] 兵种趴下 / 部署 / 架设类行为（如 GI）
+- [x] 兵种趴下 / 部署 / 架设类行为（已补 GI deploy / undeploy，展开后会切换为固定火力点）
 
 ### B4.2 载具
 - [x] Harvester

@@ -143,8 +143,8 @@ const VETERANCY_BONUSES = {
     veteran: { hp: 1.12, damage: 1.15, fireRate: 0.9 },
     elite: { hp: 1.28, damage: 1.3, fireRate: 0.8 },
 };
-const TRANSPORTABLE_INFANTRY_TYPES = new Set(['soldier', 'rocketInfantry', 'flakTrooper', 'engineer']);
-const NON_VEHICLE_ROLES = new Set(['infantry', 'anti-armor infantry', 'anti-air infantry', 'engineer', 'attack dog']);
+const TRANSPORTABLE_INFANTRY_TYPES = new Set(['soldier', 'rocketInfantry', 'flakTrooper', 'engineer', 'gi']);
+const NON_VEHICLE_ROLES = new Set(['infantry', 'deployable infantry', 'anti-armor infantry', 'anti-air infantry', 'engineer', 'attack dog']);
 const MAX_SKIRMISH_TEAM = 4;
 const UNIT_STANCE_ORDER = ['guard', 'aggressive', 'hold'];
 const UNIT_STANCE_PROFILES = {
@@ -1039,15 +1039,18 @@ class GameState {
             damage: def.damage,
             baseDamage: def.damage,
             range: def.range,
+            baseRange: def.range,
             fireRate: def.fireRate,
             baseFireRate: def.fireRate,
             sight: def.sight,
+            baseSight: def.sight,
             role: def.role,
             armorType: def.armorType,
             projectileSpeed: def.projectileSpeed || 8,
             weaponType: def.weaponType || 'rifle',
             directFire: !!def.directFire,
             damageProfile: def.damageProfile || null,
+            baseTargetArmorClasses: Array.isArray(def.targetArmorClasses) ? [...def.targetArmorClasses] : null,
             targetArmorClasses: Array.isArray(def.targetArmorClasses) ? [...def.targetArmorClasses] : null,
             canAttackGround: def.canAttackGround !== false,
             canAttackAir: !!def.canAttackAir,
@@ -1094,6 +1097,15 @@ class GameState {
             _walkPhase: 0,
             canDeploy: !!def.canDeploy,
             deploysTo: def.deploysTo || null,
+            deployProfile: def.deployProfile ? {
+                speed: def.deployProfile.speed ?? def.speed,
+                damage: def.deployProfile.damage ?? def.damage,
+                range: def.deployProfile.range ?? def.range,
+                fireRate: def.deployProfile.fireRate ?? def.fireRate,
+                sight: def.deployProfile.sight ?? def.sight,
+                targetArmorClasses: Array.isArray(def.deployProfile.targetArmorClasses) ? [...def.deployProfile.targetArmorClasses] : null,
+            } : null,
+            isDeployed: false,
             isStartingMCV: false,
             autoDeployAt: null,
             veterancyXp: 0,
@@ -1155,6 +1167,44 @@ class GameState {
 
     canDeployMCV(unit) {
         return !!this.getMCVDeployPosition(unit);
+    }
+
+    canToggleUnitDeploy(unit) {
+        return !!(unit && unit.tx === undefined && unit.state !== 'dead' && unit.state !== 'loaded' && unit.canDeploy && unit.type !== 'mcv' && unit.deployProfile);
+    }
+
+    refreshDeployableUnitStats(unit) {
+        if (!this.canToggleUnitDeploy(unit)) return false;
+        const profile = unit.isDeployed ? unit.deployProfile : null;
+        unit.speed = profile?.speed ?? unit.baseSpeed;
+        unit.damage = profile?.damage ?? unit.baseDamage;
+        unit.range = profile?.range ?? unit.baseRange;
+        unit.fireRate = profile?.fireRate ?? unit.baseFireRate;
+        unit.sight = profile?.sight ?? unit.baseSight;
+        unit.targetArmorClasses = profile?.targetArmorClasses ? [...profile.targetArmorClasses] : (unit.baseTargetArmorClasses ? [...unit.baseTargetArmorClasses] : null);
+        return true;
+    }
+
+    toggleUnitDeploy(unit) {
+        if (!this.canToggleUnitDeploy(unit)) return false;
+        if (unit.isDeployed) {
+            unit.isDeployed = false;
+            unit.state = 'idle';
+            unit.target = null;
+            unit.attackTarget = null;
+            unit.path = null;
+            unit.pathIdx = 0;
+            this.refreshDeployableUnitStats(unit);
+            if (unit.owner === this.currentPlayer) this.eva(`${this.getDisplayName(unit.type)} packed up and is mobile again.`);
+        } else {
+            this.clearUnitOrders(unit);
+            unit.isDeployed = true;
+            unit.state = 'deployed';
+            this.refreshDeployableUnitStats(unit);
+            if (unit.owner === this.currentPlayer) this.eva(`${this.getDisplayName(unit.type)} deployed into firing position.`);
+        }
+        if (this.selected.includes(unit)) this.updateSelectionInfo();
+        return true;
     }
 
     grantStartingBasePackage(playerIdx, constructionYard) {
@@ -1341,7 +1391,7 @@ class GameState {
         if (!target) return 'light';
         if (this.isAirUnit(target)) return 'air';
         if (target.tx !== undefined) return 'building';
-        if (target.role === 'infantry' || target.role === 'anti-armor infantry' || target.role === 'anti-air infantry' || target.role === 'engineer' || target.role === 'attack dog') {
+        if (target.role === 'infantry' || target.role === 'deployable infantry' || target.role === 'anti-armor infantry' || target.role === 'anti-air infantry' || target.role === 'engineer' || target.role === 'attack dog') {
             return 'infantry';
         }
         return target.armorType || 'light';
@@ -1410,7 +1460,9 @@ class GameState {
             }
             if (lowerKey === 'd') {
                 const unit = this.selected.length === 1 && this.selected[0]?.tx === undefined ? this.selected[0] : null;
-                if (unit?.type === 'mcv') {
+                if (this.canToggleUnitDeploy(unit)) {
+                    this.toggleUnitDeploy(unit);
+                } else if (unit?.type === 'mcv') {
                     this.deployMCV(unit);
                 }
             }
@@ -2098,7 +2150,7 @@ class GameState {
     }
 
     canUnitReceiveCommand(unit) {
-        return unit && unit.state !== 'dead' && unit.state !== 'loaded' && unit.role !== 'harvester';
+        return unit && unit.state !== 'dead' && unit.state !== 'loaded' && unit.role !== 'harvester' && !unit.isDeployed;
     }
 
     getSelectedCommandableUnits() {
@@ -2222,7 +2274,7 @@ class GameState {
         unit.patrolIndex = 0;
         unit.forceMove = false;
         unit.stanceAnchor = { x: unit.x, y: unit.y };
-        unit.state = 'idle';
+        unit.state = unit.isDeployed ? 'deployed' : 'idle';
         return true;
     }
 
@@ -2964,6 +3016,7 @@ class GameState {
     }
 
     issueMoveOrder(unit, tx, ty, state = 'moving', options = {}) {
+        if (unit?.isDeployed) return false;
         unit.target = { x: tx, y: ty };
         unit.attackTarget = null;
         unit.state = state;
@@ -4267,7 +4320,7 @@ class GameState {
         for (let pi = 0; pi < this.players.length; pi++) {
             const p = this.players[pi];
             for (const u of p.units) {
-                if (u.state !== 'idle' || u.hp <= 0 || u.state === 'dead' || !this.isCombatUnit(u)) continue;
+                if ((u.state !== 'idle' && u.state !== 'deployed') || u.hp <= 0 || u.state === 'dead' || !this.isCombatUnit(u)) continue;
 
                 // Find nearest enemy in sight range
                 const enemy = this._findNearestEnemy(u, pi, { mode: 'idle' });
@@ -5589,7 +5642,8 @@ class GameState {
                 return;
             }
             if (action === 'deploy') {
-                if (selectedUnit?.type === 'mcv') this.deployMCV(selectedUnit);
+                if (this.canToggleUnitDeploy(selectedUnit)) this.toggleUnitDeploy(selectedUnit);
+                else if (selectedUnit?.type === 'mcv') this.deployMCV(selectedUnit);
                 return;
             }
             if (action === 'unload') {
@@ -5641,11 +5695,11 @@ class GameState {
                 this.addBuildItem(container, type, def.name, def.cost, def.description, false);
             });
         } else {
-            ['soldier', 'attackDog', 'rocketInfantry', 'flakTrooper', 'engineer', 'harvester', 'tank', 'apc', 'ifv', 'flakTrack', 'artillery', 'prismTank', 'harrier', 'kirov', 'apocalypseTank', 'mcv'].forEach(type => {
+            ['soldier', 'attackDog', 'rocketInfantry', 'flakTrooper', 'engineer', 'gi', 'harvester', 'tank', 'apc', 'ifv', 'flakTrack', 'artillery', 'prismTank', 'harrier', 'kirov', 'apocalypseTank', 'mcv'].forEach(type => {
                 const def = UNIT_TYPES[type];
                 const description = type === 'engineer'
                     ? 'Captures enemy buildings on contact.'
-                    : (type === 'attackDog' ? 'Melee anti-infantry interceptor.' : def.role);
+                    : (type === 'attackDog' ? 'Melee anti-infantry interceptor.' : (type === 'gi' ? 'Deployable anti-infantry rifleman that trades mobility for range.' : def.role));
                 this.addBuildItem(container, type, def.name, def.cost, description, true);
             });
         }
@@ -5779,6 +5833,9 @@ class GameState {
                     if (s.passengers.length) {
                         extras.push(`LOADED: ${s.passengers.map(passenger => this.getDisplayName(passenger.type)).join(', ')}`);
                     }
+                } else if (this.canToggleUnitDeploy(s)) {
+                    extras.push(s.isDeployed ? 'UNDEPLOY READY' : 'DEPLOY READY');
+                    extras.push('D / Deploy button');
                 } else if (s.type === 'mcv') {
                     extras.push(this.canDeployMCV(s) ? 'DEPLOY READY' : 'DEPLOY BLOCKED');
                     extras.push('D / Deploy button');
@@ -5814,9 +5871,11 @@ class GameState {
                     veterancyBits.push(`RANK: ${this.getVeterancyLabel(s.veterancyRank)}`);
                     veterancyBits.push(`XP: ${Math.floor(s.veterancyXp || 0)}/${VETERANCY_THRESHOLDS.elite}`);
                 }
-                const deployButton = s.type === 'mcv'
+                const deployButton = this.canToggleUnitDeploy(s)
+                    ? `<button class="selection-action" data-action="deploy">${s.isDeployed ? 'Undeploy GI' : 'Deploy GI'}</button>`
+                    : (s.type === 'mcv'
                     ? `<button class="selection-action" data-action="deploy" ${this.canDeployMCV(s) ? '' : 'disabled'}>Deploy MCV</button>`
-                    : '';
+                    : '');
                 const stanceButtons = this.canUnitReceiveCommand(s)
                     ? UNIT_STANCE_ORDER.map(stance => `<button class="selection-action ${s.stance === stance ? 'active' : ''}" data-action="stance-${stance}">${UNIT_STANCE_PROFILES[stance].label}</button>`).join('')
                     : '';
@@ -5826,12 +5885,15 @@ class GameState {
                 const unloadButton = this.isTransportUnit(s)
                     ? `<button class="selection-action" data-action="unload" ${s.passengers.length ? '' : 'disabled'}>Unload APC</button>`
                     : '';
+                const selectionHint = this.canToggleUnitDeploy(s) && s.isDeployed
+                    ? 'This GI is deployed and cannot move until you undeploy it. Press D or use Undeploy GI to pack up.'
+                    : (this.commandMode === 'set-patrol' ? 'Right-click any visible tile to place the patrol turn-around point.' : (this.commandMode === 'set-guard' ? 'Right-click a friendly unit or building to assign a bodyguard.' : (this.commandMode === 'set-force-move' ? 'Right-click any tile or enemy to move through without auto-engaging.' : (this.commandMode === 'set-force-fire' ? 'Right-click any ground position to barrage that tile. Ctrl+right-click also force-fires instantly.' : 'Stop cancels the current order. Scatter sends the selection to nearby offsets. Shift+right-click queues waypoints. Guard escorts a friendly unit/building and responds to nearby threats. Force Fire barrages a ground tile. Force Move ignores en-route auto-engage until arrival. Patrol loops between the current position and a chosen tile. Stances: Guard / Aggressive / Hold Ground. Hotkeys: S / X / Q / C / F / P / G / A / H.'))));
                 info.innerHTML = `<div style="color:#00ff88">${this.getDisplayName(s.type)}</div>
                     <div>HP: ${Math.floor(s.hp)}/${s.maxHp}</div>
                     <div>${[...extras, `STANCE: ${this.getUnitStanceLabel(s).toUpperCase()}`, ...(s.guardTarget ? [`GUARD: ${this.getDisplayName(s.guardTarget.type)}`] : []), ...(this.isGroundAttackTarget(s.attackTarget) ? ['ORDER: FORCE FIRE'] : []), ...(s.forceMove ? ['ORDER: FORCE MOVE'] : []), ...(s.waypointQueue?.length ? [`WAYPOINTS: ${s.waypointQueue.length} queued`] : []), ...(s.patrolRoute?.length === 2 ? [`PATROL: ${Math.round(s.patrolRoute[0].x)}, ${Math.round(s.patrolRoute[0].y)} ⇄ ${Math.round(s.patrolRoute[1].x)}, ${Math.round(s.patrolRoute[1].y)}`] : [])].join(' | ')}</div>
                     ${veterancyBits.length ? `<div style="color:#ffd36b">${veterancyBits.join(' | ')}</div>` : ''}
                     <div style="color:#666;font-size:9px">${s.state}</div>
-                    ${(deployButton || unloadButton || commandButtons) ? `<div class="selection-actions">${deployButton}${unloadButton}${commandButtons}</div><div class="selection-hint">${this.commandMode === 'set-patrol' ? 'Right-click any visible tile to place the patrol turn-around point.' : (this.commandMode === 'set-guard' ? 'Right-click a friendly unit or building to assign a bodyguard.' : (this.commandMode === 'set-force-move' ? 'Right-click any tile or enemy to move through without auto-engaging.' : (this.commandMode === 'set-force-fire' ? 'Right-click any ground position to barrage that tile. Ctrl+right-click also force-fires instantly.' : 'Stop cancels the current order. Scatter sends the selection to nearby offsets. Shift+right-click queues waypoints. Guard escorts a friendly unit/building and responds to nearby threats. Force Fire barrages a ground tile. Force Move ignores en-route auto-engage until arrival. Patrol loops between the current position and a chosen tile. Stances: Guard / Aggressive / Hold Ground. Hotkeys: S / X / Q / C / F / P / G / A / H.')))}</div>` : ''}`;
+                    ${(deployButton || unloadButton || commandButtons) ? `<div class="selection-actions">${deployButton}${unloadButton}${commandButtons}</div><div class="selection-hint">${selectionHint}</div>` : ''}`;
             } else {
                 const def = BUILD_TYPES[s.type];
                 const statusBits = [];

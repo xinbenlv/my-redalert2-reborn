@@ -89,6 +89,38 @@ window.UNIT_TYPES = {
         producedBy: 'barracks',
         prerequisites: ['barracks', 'refinery']
     },
+    gi: {
+        name: 'GI',
+        cost: 350,
+        trainTime: 4200,
+        hp: 85,
+        speed: 0.95,
+        damage: 9,
+        range: 4.8,
+        fireRate: 780,
+        sight: 6,
+        armorType: 'light',
+        role: 'deployable infantry',
+        projectileSpeed: 8.5,
+        weaponType: 'rifle',
+        damageProfile: {
+            infantry: 1.45,
+            light: 0.85,
+            heavy: 0.35,
+            building: 0.45
+        },
+        canDeploy: true,
+        deployProfile: {
+            speed: 0,
+            damage: 18,
+            range: 7.5,
+            fireRate: 620,
+            sight: 8,
+            targetArmorClasses: ['infantry', 'light']
+        },
+        producedBy: 'barracks',
+        prerequisites: ['barracks', 'powerPlant']
+    },
     attackDog: {
         name: 'Attack Dog',
         cost: 300,

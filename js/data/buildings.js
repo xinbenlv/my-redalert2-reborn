@@ -75,8 +75,8 @@ window.BUILD_TYPES = {
         size: 2,
         powerSupply: 0,
         powerDrain: 25,
-        production: ['soldier', 'attackDog', 'rocketInfantry', 'flakTrooper', 'engineer'],
-        description: 'Trains infantry, attack dogs, and engineers.',
+        production: ['soldier', 'attackDog', 'rocketInfantry', 'flakTrooper', 'engineer', 'gi'],
+        description: 'Trains infantry, attack dogs, engineers, and deployable GIs.',
         prerequisites: ['constructionYard', 'powerPlant']
     },
     radarDome: {
