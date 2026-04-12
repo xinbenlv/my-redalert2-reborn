@@ -2603,6 +2603,18 @@ class GameState {
         return !!(building && building.hp > 0 && building.built && (building.damage || 0) > 0);
     }
 
+    doesBuildingRequirePower(building) {
+        if (!building) return false;
+        return !!BUILD_TYPES?.[building.type]?.requiresPower;
+    }
+
+    areBuildingWeaponsOnline(building) {
+        if (!this.isDefensiveBuilding(building)) return false;
+        if (!this.doesBuildingRequirePower(building)) return true;
+        const owner = this.players?.[building.owner];
+        return !owner || !POWER_SYSTEM.isLowPower(owner);
+    }
+
     getProductionBuildings(player, unitType) {
         const producer = UNIT_TYPES[unitType]?.producedBy;
         return player.buildings.filter(b => b.type === producer && b.built && b.hp > 0);
@@ -3699,8 +3711,8 @@ class GameState {
                     if (this.isGarrisonBuilding(b)) {
                         this.refreshGarrisonBuildingStats(b);
                     }
-                    const defensesPowered = !POWER_SYSTEM.isLowPower(p);
-                    if (!defensesPowered) {
+                    const weaponsOnline = this.areBuildingWeaponsOnline(b);
+                    if (!weaponsOnline) {
                         b.attackTarget = null;
                     } else {
                         const sourceAnchor = this.getEntityAnchor(b);
@@ -5642,7 +5654,7 @@ class GameState {
                     statusBits.push(repairState ? `Servicing: ${repairState.label}` : 'Pad idle');
                 }
                 if (s.canAttackAir && s.attackTarget && this.isAirUnit(s.attackTarget)) statusBits.push(`AA LOCK: ${this.getDisplayName(s.attackTarget.type)}`);
-                if (this.isDefensiveBuilding(s) && POWER_SYSTEM.isLowPower(this.players[s.owner])) statusBits.push('Weapons offline');
+                if (this.isDefensiveBuilding(s) && !this.areBuildingWeaponsOnline(s)) statusBits.push('Weapons offline');
                 if (s.repairing) statusBits.push('Repairing');
                 if (s.rallyPoint && this.canSetRallyPoint(s)) statusBits.push(`Rally: ${Math.round(s.rallyPoint.x)}, ${Math.round(s.rallyPoint.y)}`);
                 const canRepair = this.canRepairBuilding(this.players[s.owner], s);

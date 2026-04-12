@@ -12,11 +12,22 @@ test('pillbox and sentry gun appear in build menu, fire on enemies, and go offli
     const game = (window as any).game;
     const player = game.players[0];
     const enemy = game.players[1];
+    game.players.slice(2).forEach((other: any) => {
+      other.units = [];
+      other.buildings = [];
+    });
 
+    player.units = [];
     enemy.units = [];
+    enemy.buildings = [game.createBuilding('constructionYard', 28, 28, 1)];
     game.projectiles = [];
     game.effects = [];
 
+    player.buildings = [
+      game.createBuilding('constructionYard', 6, 6, 0),
+      game.createBuilding('powerPlant', 9, 10, 0),
+      game.createBuilding('powerPlant', 9, 14, 0),
+    ];
     const pillbox = game.createBuilding('pillbox', 12, 12, 0);
     const sentryGun = game.createBuilding('sentryGun', 14, 12, 0);
     player.buildings.push(pillbox, sentryGun);
@@ -54,6 +65,10 @@ test('pillbox and sentry gun appear in build menu, fire on enemies, and go offli
     const game = (window as any).game;
     const player = game.players[0];
     const enemy = game.players[1];
+    game.players.slice(2).forEach((other: any) => {
+      other.units = [];
+      other.buildings = [];
+    });
     const sentryGun = player.buildings.find((building: any) => building.type === 'sentryGun');
     const powerPlants = player.buildings.filter((building: any) => building.type === 'powerPlant');
 

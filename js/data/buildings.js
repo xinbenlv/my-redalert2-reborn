@@ -145,6 +145,7 @@ window.BUILD_TYPES = {
         fireRate: 500,
         projectileSpeed: 11,
         weaponType: 'rifle',
+        requiresPower: true,
         damageProfile: {
             infantry: 1.3,
             light: 0.9,
@@ -168,6 +169,7 @@ window.BUILD_TYPES = {
         fireRate: 1300,
         projectileSpeed: 10,
         weaponType: 'cannon',
+        requiresPower: true,
         damageProfile: {
             infantry: 0.7,
             light: 1.05,
@@ -191,6 +193,7 @@ window.BUILD_TYPES = {
         fireRate: 1200,
         projectileSpeed: 12,
         weaponType: 'missile',
+        requiresPower: true,
         canAttackGround: false,
         canAttackAir: true,
         targetArmorClasses: ['air'],

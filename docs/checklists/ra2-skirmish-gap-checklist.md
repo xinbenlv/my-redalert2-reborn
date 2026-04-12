@@ -82,7 +82,7 @@
 - [~] Patriot / Flak Cannon / Tesla Coil / Prism Tower 等阵营防御（已补 Patriot Battery，其他阵营防御仍缺）
 - [~] 防空建筑（已补 Patriot Battery 基础防空塔，更多阵营/层级仍未完成）
 - [x] 围墙（Wall / Sandbag / Concrete Wall）
-- [ ] 防御建筑供电 / 低电停摆逻辑细化
+- [~] 防御建筑供电 / 低电停摆逻辑细化（已让 Pillbox / Sentry Gun / Patriot Battery 在 low power 时真正停火，同时保留 Battle Bunker 这类非供电驻军火力；更细的分级停摆/动画反馈仍未完成）
 
 ### B3.5 超级武器建筑
 - [ ] Nuclear Missile Silo

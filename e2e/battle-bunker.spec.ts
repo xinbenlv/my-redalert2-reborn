@@ -12,6 +12,10 @@ test('battle bunker can garrison infantry, fire from cover, and eject survivors'
     const game = (window as any).game;
     const player = game.players[0];
     const enemy = game.players[1];
+    game.players.slice(2).forEach((other: any) => {
+      other.units = [];
+      other.buildings = [];
+    });
 
     player.units = [];
     player.buildings = [game.createBuilding('constructionYard', 6, 6, 0)];
@@ -95,4 +99,59 @@ test('battle bunker can garrison infantry, fire from cover, and eject survivors'
   expect(garrisonState.flakVisibleAfterEject).toBe(true);
   expect(garrisonState.soldierDistanceAfterEject).toBeLessThanOrEqual(3);
   expect(garrisonState.flakDistanceAfterEject).toBeLessThanOrEqual(3);
+});
+
+test('battle bunker keeps firing during low power because it is infantry-driven, not a powered turret', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForFunction(() => Boolean((window as any).game));
+
+  const lowPowerBunkerState = await page.evaluate(() => {
+    const game = (window as any).game;
+    const player = game.players[0];
+    const enemy = game.players[1];
+    game.players.slice(2).forEach((other: any) => {
+      other.units = [];
+      other.buildings = [];
+    });
+
+    player.units = [];
+    player.buildings = [game.createBuilding('constructionYard', 6, 6, 0)];
+    enemy.units = [];
+    enemy.buildings = [game.createBuilding('constructionYard', 28, 28, 1)];
+    game.projectiles = [];
+    game.effects = [];
+
+    const bunker = game.createBuilding('battleBunker', 14, 14, 0);
+    const soldier = game.createUnit('soldier', 12.8, 14.1, 0);
+    const flakTrooper = game.createUnit('flakTrooper', 12.8, 15.2, 0);
+    const tank = game.createUnit('tank', 18.3, 14.2, 1);
+    tank.damage = 0;
+    tank.range = 0;
+    tank.fireRate = 999999;
+
+    player.buildings.push(bunker, game.createBuilding('barracks', 10, 10, 0), game.createBuilding('powerPlant', 9, 14, 0));
+    player.units.push(soldier, flakTrooper);
+    enemy.units.push(tank);
+
+    game.orderUnitToGarrison(soldier, bunker);
+    game.orderUnitToGarrison(flakTrooper, bunker);
+    for (let i = 0; i < 80; i += 1) game.update(50);
+
+    const powerPlant = player.buildings.find((building: any) => building.type === 'powerPlant');
+    powerPlant.hp = 0;
+    for (let i = 0; i < 80; i += 1) game.update(50);
+
+    game.selected = [bunker];
+    game.updateSelectionInfo();
+
+    return {
+      lowPower: (window as any).POWER_SYSTEM.isLowPower(player),
+      tankHp: tank.hp,
+      selectionText: document.getElementById('selection-info')?.textContent || '',
+    };
+  });
+
+  expect(lowPowerBunkerState.lowPower).toBe(true);
+  expect(lowPowerBunkerState.tankHp).toBeLessThan(180);
+  expect(lowPowerBunkerState.selectionText).not.toContain('Weapons offline');
 });
