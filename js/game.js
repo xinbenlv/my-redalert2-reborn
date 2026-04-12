@@ -189,9 +189,72 @@ function getAIFactionProfile(playerFaction, aiIndex = 0) {
 
 function getAIDifficultyProfile(difficulty) {
     const profiles = {
-        easy: { difficulty: 'easy', decisionMin: 3400, decisionRange: 1800, attackThreshold: 5 },
-        medium: { difficulty: 'medium', decisionMin: 2500, decisionRange: 1500, attackThreshold: 4 },
-        hard: { difficulty: 'hard', decisionMin: 1800, decisionRange: 1100, attackThreshold: 3 },
+        easy: {
+            difficulty: 'easy',
+            decisionMin: 3600,
+            decisionRange: 1900,
+            attackThreshold: 6,
+            repairReserve: 650,
+            repairStopReserve: 340,
+            repairTechThreshold: 0.82,
+            repairNonTechThreshold: 0.62,
+            sellHpRatio: 0.14,
+            airfieldReserve: 1000,
+            battleLabReserve: 900,
+            desiredPowerPlantsBonus: 0,
+            desiredPillboxesBonus: 0,
+            desiredSentryGunsBonus: 0,
+            desiredPatriotBonus: -1,
+            desiredIfvBonus: 0,
+            desiredFlakTrackBonus: 0,
+            desiredFlakTrooperBonus: -1,
+            desiredHarriersBonus: -1,
+            desiredArtilleryBonus: 0,
+        },
+        medium: {
+            difficulty: 'medium',
+            decisionMin: 2500,
+            decisionRange: 1500,
+            attackThreshold: 4,
+            repairReserve: 450,
+            repairStopReserve: 225,
+            repairTechThreshold: 0.9,
+            repairNonTechThreshold: 0.72,
+            sellHpRatio: 0.18,
+            airfieldReserve: 700,
+            battleLabReserve: 0,
+            desiredPowerPlantsBonus: 0,
+            desiredPillboxesBonus: 0,
+            desiredSentryGunsBonus: 0,
+            desiredPatriotBonus: 0,
+            desiredIfvBonus: 0,
+            desiredFlakTrackBonus: 0,
+            desiredFlakTrooperBonus: 0,
+            desiredHarriersBonus: 0,
+            desiredArtilleryBonus: 0,
+        },
+        hard: {
+            difficulty: 'hard',
+            decisionMin: 1800,
+            decisionRange: 1100,
+            attackThreshold: 3,
+            repairReserve: 325,
+            repairStopReserve: 160,
+            repairTechThreshold: 0.96,
+            repairNonTechThreshold: 0.84,
+            sellHpRatio: 0.24,
+            airfieldReserve: 300,
+            battleLabReserve: 0,
+            desiredPowerPlantsBonus: 1,
+            desiredPillboxesBonus: 1,
+            desiredSentryGunsBonus: 1,
+            desiredPatriotBonus: 1,
+            desiredIfvBonus: 1,
+            desiredFlakTrackBonus: 1,
+            desiredFlakTrooperBonus: 1,
+            desiredHarriersBonus: 1,
+            desiredArtilleryBonus: 1,
+        },
     };
     return profiles[difficulty] || profiles.medium;
 }
@@ -4412,7 +4475,11 @@ class GameState {
         if (!ai?.buildings?.length) return false;
         const now = Date.now();
         const powerBuildings = ai.buildings.filter(building => building.hp > 0 && (building.type === 'powerPlant' || building.type === 'advancedPowerPlant'));
-        const repairReserve = this.aiConfig.buildOrder === 'fortified' ? 650 : 450;
+        const repairReserve = Math.max(150, this.aiConfig.repairReserve + (this.aiConfig.buildOrder === 'fortified' ? 120 : 0));
+        const repairStopReserve = Math.max(100, this.aiConfig.repairStopReserve + (this.aiConfig.buildOrder === 'fortified' ? 60 : 0));
+        const repairTechThreshold = Math.min(0.98, this.aiConfig.repairTechThreshold + (this.aiConfig.buildOrder === 'fortified' ? 0.03 : 0));
+        const repairNonTechThreshold = Math.min(0.92, this.aiConfig.repairNonTechThreshold + (this.aiConfig.buildOrder === 'fortified' ? 0.04 : 0));
+        const sellHpRatio = Math.min(0.3, this.aiConfig.sellHpRatio + (this.aiConfig.buildOrder === 'fortified' ? 0.02 : 0));
         const damagedBuildings = ai.buildings
             .filter(building => building.built && building.hp > 0 && building.hp < building.maxHp)
             .sort((a, b) => {
@@ -4428,7 +4495,7 @@ class GameState {
             const canSparePower = isPower && powerBuildings.length > 1;
             const isDefensive = this.isDefensiveBuilding(building);
             const isTechAnchor = ['constructionYard', 'refinery', 'warFactory', 'barracks', 'radarDome', 'battleLab', 'airfield'].includes(building.type);
-            const shouldSell = hpRatio <= 0.18 && recentlyHit && (isDefensive || canSparePower || !isTechAnchor);
+            const shouldSell = hpRatio <= sellHpRatio && recentlyHit && (isDefensive || canSparePower || !isTechAnchor);
             if (shouldSell) {
                 this.sellBuilding(building);
                 return true;
@@ -4440,14 +4507,14 @@ class GameState {
             const recentlyHit = building._lastHitTime && now - building._lastHitTime < 3000;
             const isTechAnchor = ['constructionYard', 'refinery', 'warFactory', 'barracks', 'radarDome', 'battleLab', 'airfield'].includes(building.type);
             if (building.repairing) {
-                if (hpRatio >= 0.98 || ai.money < Math.max(120, Math.floor(repairReserve * 0.5))) {
+                if (hpRatio >= 0.98 || ai.money < repairStopReserve) {
                     building.repairing = false;
                 }
                 continue;
             }
             const shouldRepair = this.canRepairBuilding(ai, building)
                 && ai.money >= repairReserve
-                && hpRatio <= (isTechAnchor ? 0.9 : 0.72)
+                && hpRatio <= (isTechAnchor ? repairTechThreshold : repairNonTechThreshold)
                 && (!recentlyHit || hpRatio <= 0.45 || isTechAnchor);
             if (shouldRepair) {
                 building.repairing = true;
@@ -4476,9 +4543,17 @@ class GameState {
 
         const baseX = ai.buildings.length > 0 ? ai.buildings[0].tx : MAP_SIZE - 10;
         const baseY = ai.buildings.length > 0 ? ai.buildings[0].ty : MAP_SIZE - 10;
-        const builtTypes = new Set(ai.buildings.filter(b => b.built && b.hp > 0).map(b => b.type));
         const enemyPlayer = this.getClosestEnemyPlayer(ai);
+        const builtTypes = new Set(ai.buildings.filter(b => b.built && b.hp > 0).map(b => b.type));
+        if (!enemyPlayer) return;
         if (this.manageAIBuildingEconomy(ai)) return;
+
+        const enemyHeavyUnits = enemyPlayer.units.filter(u => u.state !== 'dead' && u.armorType === 'heavy').length;
+        const enemyAirUnits = enemyPlayer.units.filter(u => u.state !== 'dead' && this.isAirUnit(u)).length;
+        const enemyAirPressure = this.getAirThreatPressure(enemyPlayer);
+        const enemyBuildings = enemyPlayer.buildings.filter(b => b.built && b.hp > 0).length;
+        const enemyDefenses = enemyPlayer.buildings.filter(b => b.built && b.hp > 0 && this.isDefensiveBuilding(b)).length;
+        const enemyInfantryUnits = enemyPlayer.units.filter(u => u.state !== 'dead' && u.role !== 'harvester' && u.armorType !== 'heavy').length;
 
         const tryBuild = type => {
             const def = BUILD_TYPES[type];
@@ -4506,13 +4581,16 @@ class GameState {
         if (!builtTypes.has('warFactory') && tryBuild('warFactory')) return;
         const wantsAirfieldFirst = this.aiConfig.prioritizeAirfield && !builtTypes.has('airfield');
         const wantsBattleLabFirst = this.aiConfig.prioritizeBattleLab && !builtTypes.has('battleLab');
-        if (wantsAirfieldFirst && builtTypes.has('warFactory') && ai.money >= BUILD_TYPES.airfield.cost + 600 && tryBuild('airfield')) return;
-        if (wantsBattleLabFirst && builtTypes.has('warFactory') && ai.money >= BUILD_TYPES.battleLab.cost && tryBuild('battleLab')) return;
-        if (!builtTypes.has('airfield') && builtTypes.has('warFactory') && ai.money >= BUILD_TYPES.airfield.cost + 1000 && tryBuild('airfield')) return;
-        if (!builtTypes.has('battleLab') && builtTypes.has('warFactory') && ai.money >= BUILD_TYPES.battleLab.cost && tryBuild('battleLab')) return;
-        if (ai.buildings.filter(b => b.type === 'powerPlant' || b.type === 'advancedPowerPlant').length < this.aiConfig.desiredPowerPlants && ai.money > 2200 && tryBuild('powerPlant')) return;
-        if (builtTypes.has('barracks') && ai.buildings.filter(b => b.type === 'pillbox' && b.hp > 0).length < this.aiConfig.desiredPillboxes && ai.money >= BUILD_TYPES.pillbox.cost && tryBuild('pillbox')) return;
-        if (builtTypes.has('warFactory') && ai.buildings.filter(b => b.type === 'sentryGun' && b.hp > 0).length < this.aiConfig.desiredSentryGuns && ai.money >= BUILD_TYPES.sentryGun.cost && tryBuild('sentryGun')) return;
+        if (wantsAirfieldFirst && builtTypes.has('warFactory') && ai.money >= BUILD_TYPES.airfield.cost + this.aiConfig.airfieldReserve && tryBuild('airfield')) return;
+        if (wantsBattleLabFirst && builtTypes.has('warFactory') && ai.money >= BUILD_TYPES.battleLab.cost + this.aiConfig.battleLabReserve && tryBuild('battleLab')) return;
+        if (!builtTypes.has('airfield') && builtTypes.has('warFactory') && ai.money >= BUILD_TYPES.airfield.cost + Math.max(this.aiConfig.airfieldReserve, 700) && tryBuild('airfield')) return;
+        if (!builtTypes.has('battleLab') && builtTypes.has('warFactory') && ai.money >= BUILD_TYPES.battleLab.cost + this.aiConfig.battleLabReserve && tryBuild('battleLab')) return;
+        const desiredPowerPlants = Math.max(1, this.aiConfig.desiredPowerPlants + this.aiConfig.desiredPowerPlantsBonus);
+        const desiredPillboxes = Math.max(0, this.aiConfig.desiredPillboxes + this.aiConfig.desiredPillboxesBonus);
+        const desiredSentryGuns = Math.max(0, this.aiConfig.desiredSentryGuns + this.aiConfig.desiredSentryGunsBonus);
+        if (ai.buildings.filter(b => b.type === 'powerPlant' || b.type === 'advancedPowerPlant').length < desiredPowerPlants && ai.money > 2200 && tryBuild('powerPlant')) return;
+        if (builtTypes.has('barracks') && ai.buildings.filter(b => b.type === 'pillbox' && b.hp > 0).length < desiredPillboxes && ai.money >= BUILD_TYPES.pillbox.cost && tryBuild('pillbox')) return;
+        if (builtTypes.has('warFactory') && ai.buildings.filter(b => b.type === 'sentryGun' && b.hp > 0).length < desiredSentryGuns && ai.money >= BUILD_TYPES.sentryGun.cost && tryBuild('sentryGun')) return;
 
         const harvesters = ai.units.filter(u => u.type === 'harvester' && u.state !== 'dead').length;
         const refineries = ai.buildings.filter(b => b.type === 'refinery' && b.built && b.hp > 0).length;
@@ -4525,14 +4603,6 @@ class GameState {
         const artilleryFactories = this.getProductionBuildings(ai, 'artillery');
         const apocalypseFactories = this.getProductionBuildings(ai, 'apocalypseTank');
         const airfields = this.getProductionBuildings(ai, 'harrier');
-        if (!enemyPlayer) return;
-        const enemyHeavyUnits = enemyPlayer.units.filter(u => u.state !== 'dead' && u.armorType === 'heavy').length;
-        const enemyAirUnits = enemyPlayer.units.filter(u => u.state !== 'dead' && this.isAirUnit(u)).length;
-        const enemyAirPressure = this.getAirThreatPressure(enemyPlayer);
-        const enemyBuildings = enemyPlayer.buildings.filter(b => b.built && b.hp > 0).length;
-        const enemyDefenses = enemyPlayer.buildings.filter(b => b.built && b.hp > 0 && this.isDefensiveBuilding(b)).length;
-        const enemyInfantryUnits = enemyPlayer.units.filter(u => u.state !== 'dead' && u.role !== 'harvester' && u.armorType !== 'heavy').length;
-
         if (warFactories.length > 0 && harvesters < Math.max(1, refineries) && ai.money >= UNIT_TYPES.harvester.cost) {
             const wf = warFactories.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
             ai.money -= UNIT_TYPES.harvester.cost;
@@ -4556,11 +4626,11 @@ class GameState {
         const aiPatriotCount = ai.buildings.filter(b => b.type === 'patriotBattery' && b.hp > 0).length;
         const antiAirCoverageScore = this.getAntiAirCoverageScore(ai);
         const antiAirEmergency = enemyAirPressure >= 2 && antiAirCoverageScore < (enemyAirPressure * 2);
-        const desiredPatriotCount = (enemyAirPressure >= 5 ? 2 : (enemyAirPressure >= 3 ? 1 : 0)) + (this.aiConfig.buildOrder === 'fortified' ? 1 : 0);
+        const desiredPatriotCount = Math.max(0, (enemyAirPressure >= 5 ? 2 : (enemyAirPressure >= 3 ? 1 : 0)) + (this.aiConfig.buildOrder === 'fortified' ? 1 : 0) + this.aiConfig.desiredPatriotBonus);
         if (antiAirEmergency && builtTypes.has('radarDome') && ai.money >= BUILD_TYPES.patriotBattery.cost && aiPatriotCount < desiredPatriotCount && tryBuild('patriotBattery')) return;
-        const desiredIfvCount = enemyAirPressure >= 4 ? 2 : (enemyAirPressure >= 2 ? 1 : 0);
-        const desiredFlakTrackCount = enemyAirPressure >= 5 ? 2 : (enemyAirPressure >= 3 ? 1 : 0);
-        const desiredFlakTrooperCount = enemyAirPressure >= 2 ? Math.max(2, enemyAirPressure) : 0;
+        const desiredIfvCount = Math.max(0, (enemyAirPressure >= 4 ? 2 : (enemyAirPressure >= 2 ? 1 : 0)) + this.aiConfig.desiredIfvBonus);
+        const desiredFlakTrackCount = Math.max(0, (enemyAirPressure >= 5 ? 2 : (enemyAirPressure >= 3 ? 1 : 0)) + this.aiConfig.desiredFlakTrackBonus);
+        const desiredFlakTrooperCount = Math.max(0, (enemyAirPressure >= 2 ? Math.max(2, enemyAirPressure) : 0) + this.aiConfig.desiredFlakTrooperBonus);
         if (ifvFactories.length > 0 && ai.money >= UNIT_TYPES.ifv.cost && ((enemyAirUnits >= 1 && aiIfvCount < Math.max(1, enemyAirUnits)) || (antiAirEmergency && aiIfvCount < desiredIfvCount))) {
             const wf = ifvFactories.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
             ai.money -= UNIT_TYPES.ifv.cost;
@@ -4578,7 +4648,7 @@ class GameState {
         }
 
         const aiArtilleryCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'artillery').length + this._getTotalTrainQueue(ai, 'artillery');
-        const desiredArtilleryCount = Math.max(1, Math.ceil(enemyDefenses / 2) + this.aiConfig.desiredArtilleryBias);
+        const desiredArtilleryCount = Math.max(1, Math.ceil(enemyDefenses / 2) + this.aiConfig.desiredArtilleryBias + this.aiConfig.desiredArtilleryBonus);
         if (artilleryFactories.length > 0 && ai.money >= UNIT_TYPES.artillery.cost && (enemyDefenses >= 1 || enemyBuildings >= 6 || this.aiConfig.buildOrder === 'fortified') && aiArtilleryCount < desiredArtilleryCount) {
             const wf = artilleryFactories.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
             ai.money -= UNIT_TYPES.artillery.cost;
@@ -4597,7 +4667,7 @@ class GameState {
 
         const aiHarrierCount = ai.units.filter(u => u.state !== 'dead' && u.type === 'harrier').length + this._getTotalTrainQueue(ai, 'harrier');
         const enemyEcoTargets = enemyPlayer.units.filter(u => u.state !== 'dead' && u.type === 'harvester').length + enemyPlayer.buildings.filter(b => b.built && b.hp > 0 && (b.type === 'refinery' || b.type === 'powerPlant')).length;
-        const desiredHarrierCount = this.aiConfig.desiredHarriers;
+        const desiredHarrierCount = Math.max(0, this.aiConfig.desiredHarriers + this.aiConfig.desiredHarriersBonus);
         const shouldPrioritizeHarriers = !antiAirEmergency && airfields.length > 0 && ai.money >= UNIT_TYPES.harrier.cost && (enemyDefenses >= 1 || enemyEcoTargets >= 2 || enemyBuildings >= 5 || this.aiConfig.buildOrder === 'air') && aiHarrierCount < desiredHarrierCount;
         if (shouldPrioritizeHarriers) {
             const airfield = airfields.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
