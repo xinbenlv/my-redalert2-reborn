@@ -2624,6 +2624,41 @@ class GameState {
         return (building.training ? 1 : 0) + (building.trainQueue?.length || 0);
     }
 
+    enqueueUnitProduction(player, unitType, amount = 1) {
+        const unitDef = UNIT_TYPES[unitType];
+        if (!player || !unitDef || amount <= 0) {
+            return { queued: 0, totalQueued: 0, requested: amount, remainingCapacity: 0 };
+        }
+        const producers = this.getProductionBuildings(player, unitType);
+        if (!producers.length) {
+            return { queued: 0, totalQueued: this._getTotalTrainQueue(player, unitType), requested: amount, remainingCapacity: 0 };
+        }
+
+        let queued = 0;
+        const remainingCapacity = () => producers.reduce((total, building) => total + Math.max(0, 20 - this.getQueueLength(building)), 0);
+        while (queued < amount && player.money >= unitDef.cost) {
+            const producer = producers
+                .filter(building => this.getQueueLength(building) < 20)
+                .sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b))[0];
+            if (!producer) break;
+            player.money -= unitDef.cost;
+            if (!producer.training) {
+                producer.training = unitType;
+                producer.trainProgress = 0;
+            } else {
+                producer.trainQueue.push(unitType);
+            }
+            queued += 1;
+        }
+
+        return {
+            queued,
+            totalQueued: this._getTotalTrainQueue(player, unitType),
+            requested: amount,
+            remainingCapacity: remainingCapacity()
+        };
+    }
+
     getUnitCount(player, unitType, { includeQueued = false } = {}) {
         if (!player || !unitType) return 0;
         const liveUnits = player.units.filter(u => u.state !== 'dead' && u.type === unitType).length;
@@ -5515,7 +5550,9 @@ class GameState {
         } else if (!affordable) {
             statusEl.textContent = 'Insufficient funds';
         } else {
-            statusEl.textContent = chainLabel ? 'Tech ready' : 'Ready';
+            statusEl.textContent = isUnit
+                ? `${chainLabel ? 'Tech ready' : 'Ready'} • Shift+Click x5`
+                : (chainLabel ? 'Tech ready' : 'Ready');
             statusEl.classList.add('ready');
         }
         div.appendChild(statusEl);
@@ -5531,7 +5568,7 @@ class GameState {
             this._queueBadges[type] = badge;
         }
 
-        div.addEventListener('click', () => {
+        div.addEventListener('click', (event) => {
             if (locked) {
                 this.eva(`${name} locked. Next: ${nextUnlock}. Missing: ${missing.join(', ')}.`);
                 return;
@@ -5540,19 +5577,19 @@ class GameState {
             if (isUnit) {
                 const buildings = this.getProductionBuildings(p, type);
                 if (buildings.length === 0) { this.eva(`No available ${BUILD_TYPES[UNIT_TYPES[type].producedBy].name}.`); return; }
-                buildings.sort((a, b) => this.getQueueLength(a) - this.getQueueLength(b));
-                const producer = buildings[0];
-                if (this.getQueueLength(producer) >= 20) { this.eva('Production queue full (20 max).'); return; }
-                p.money -= cost;
-                if (!producer.training) {
-                    producer.training = type;
-                    producer.trainProgress = 0;
-                } else {
-                    producer.trainQueue.push(type);
+                const batchSize = event.shiftKey ? 5 : 1;
+                const result = this.enqueueUnitProduction(p, type, batchSize);
+                if (result.queued <= 0) {
+                    const hasCapacity = buildings.some(building => this.getQueueLength(building) < 20);
+                    this.eva(hasCapacity ? 'Insufficient funds.' : 'Production queue full (20 max per building).');
+                    return;
                 }
                 this.updateMoney();
-                const qTotal = this._getTotalTrainQueue(p, type);
-                this.eva(`Training ${name}... (${qTotal} queued)`);
+                const batchLabel = result.requested > 1 ? `Queued ${result.queued}/${result.requested} ${name}.` : `Training ${name}...`;
+                const partialReason = result.queued < result.requested
+                    ? (p.money < cost ? ' Funds exhausted.' : ' Queue capacity reached.')
+                    : '';
+                this.eva(`${batchLabel} (${result.totalQueued} queued)${partialReason}`);
                 this._updateQueueBadge();
             } else {
                 this.placingBuilding = type;
