@@ -4408,6 +4408,57 @@ class GameState {
         return assignments;
     }
 
+    manageAIBuildingEconomy(ai) {
+        if (!ai?.buildings?.length) return false;
+        const now = Date.now();
+        const powerBuildings = ai.buildings.filter(building => building.hp > 0 && (building.type === 'powerPlant' || building.type === 'advancedPowerPlant'));
+        const repairReserve = this.aiConfig.buildOrder === 'fortified' ? 650 : 450;
+        const damagedBuildings = ai.buildings
+            .filter(building => building.built && building.hp > 0 && building.hp < building.maxHp)
+            .sort((a, b) => {
+                const aRatio = a.hp / Math.max(1, a.maxHp);
+                const bRatio = b.hp / Math.max(1, b.maxHp);
+                return aRatio - bRatio;
+            });
+
+        for (const building of damagedBuildings) {
+            const hpRatio = building.hp / Math.max(1, building.maxHp);
+            const recentlyHit = building._lastHitTime && now - building._lastHitTime < 5000;
+            const isPower = building.type === 'powerPlant' || building.type === 'advancedPowerPlant';
+            const canSparePower = isPower && powerBuildings.length > 1;
+            const isDefensive = this.isDefensiveBuilding(building);
+            const isTechAnchor = ['constructionYard', 'refinery', 'warFactory', 'barracks', 'radarDome', 'battleLab', 'airfield'].includes(building.type);
+            const shouldSell = hpRatio <= 0.18 && recentlyHit && (isDefensive || canSparePower || !isTechAnchor);
+            if (shouldSell) {
+                this.sellBuilding(building);
+                return true;
+            }
+        }
+
+        for (const building of damagedBuildings) {
+            const hpRatio = building.hp / Math.max(1, building.maxHp);
+            const recentlyHit = building._lastHitTime && now - building._lastHitTime < 3000;
+            const isTechAnchor = ['constructionYard', 'refinery', 'warFactory', 'barracks', 'radarDome', 'battleLab', 'airfield'].includes(building.type);
+            if (building.repairing) {
+                if (hpRatio >= 0.98 || ai.money < Math.max(120, Math.floor(repairReserve * 0.5))) {
+                    building.repairing = false;
+                }
+                continue;
+            }
+            const shouldRepair = this.canRepairBuilding(ai, building)
+                && ai.money >= repairReserve
+                && hpRatio <= (isTechAnchor ? 0.9 : 0.72)
+                && (!recentlyHit || hpRatio <= 0.45 || isTechAnchor);
+            if (shouldRepair) {
+                building.repairing = true;
+                building.sellPending = false;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     updateSingleAI(aiIndex, dt) {
         const aiState = this.aiState?.[aiIndex];
         if (!aiState) return;
@@ -4426,6 +4477,7 @@ class GameState {
         const baseX = ai.buildings.length > 0 ? ai.buildings[0].tx : MAP_SIZE - 10;
         const baseY = ai.buildings.length > 0 ? ai.buildings[0].ty : MAP_SIZE - 10;
         const builtTypes = new Set(ai.buildings.filter(b => b.built && b.hp > 0).map(b => b.type));
+        if (this.manageAIBuildingEconomy(ai)) return;
 
         const tryBuild = type => {
             const def = BUILD_TYPES[type];
